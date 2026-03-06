@@ -155,14 +155,10 @@ export const syncAndAutoMatch = action({
   handler: async (ctx): Promise<{ synced: number; autoCompleted: number; alreadyDone: number }> => {
     const activities = await fetchStravaActivities(ctx);
 
-    let autoCompleted = 0;
-    let alreadyDone = 0;
-
-    for (const activity of activities) {
+    const mappedActivities = activities.map((activity) => {
       const mappedType = mapStravaTypeToWorkoutType(activity.type, activity.name);
       const mappedTitle = workoutTitleForType(mappedType);
-
-      const result = await ctx.runMutation(internal.workouts.autoCompleteFromActivity, {
+      return {
         date: activity.date,
         stravaActivityId: activity.stravaId,
         actualDistance: activity.distance,
@@ -171,15 +167,16 @@ export const syncAndAutoMatch = action({
         mappedType,
         mappedTitle,
         activityName: activity.name,
-      });
+      };
+    });
 
-      if (result === "completed") autoCompleted++;
-      else if (result === "already_done") alreadyDone++;
-    }
+    const result = await ctx.runMutation(internal.workouts.autoCompleteFromActivities, {
+      activities: mappedActivities,
+    });
 
     await ctx.runMutation(internal.strava.updateLastSyncAt);
 
-    return { synced: activities.length, autoCompleted, alreadyDone };
+    return { synced: activities.length, ...result };
   },
 });
 

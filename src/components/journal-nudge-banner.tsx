@@ -4,9 +4,10 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import Link from "next/link";
 import { BookOpen } from "lucide-react";
+import { getLocalDateString } from "@/lib/pace-utils";
 
 export function JournalNudgeBanner() {
-  const today = new Date().toISOString().split("T")[0];
+  const today = getLocalDateString();
   const status = useQuery(api.journal.getTodayJournalStatus, { today });
 
   const currentHour = new Date().getHours();

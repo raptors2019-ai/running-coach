@@ -1,6 +1,29 @@
 const UPPER_BODY_KEYWORDS = /upper|arm|chest|back|shoulder|push|pull|bench/i;
 const LOWER_BODY_KEYWORDS = /lower|leg|squat|glute|lunge|deadlift|calf/i;
 
+const RUNNING_TYPES = new Set([
+  "easy", "long", "tempo", "intervals", "race_pace", "recovery", "race", "shakeout", "run",
+]);
+
+export function isRunningType(type: string): boolean {
+  return RUNNING_TYPES.has(type);
+}
+
+const WORKOUT_TYPE_LABELS: Record<string, string> = {
+  easy: "Easy",
+  tempo: "Tempo",
+  intervals: "Intervals",
+  long: "Long Run",
+  rest: "Active Recovery",
+  cross_training: "Cross Training",
+  upper_body: "Upper Body",
+  lower_body: "Lower Body",
+  swim: "Swim",
+  race: "Race Day",
+  shakeout: "Shakeout",
+  race_pace: "Race Pace",
+};
+
 export function mapStravaTypeToWorkoutType(
   stravaType: string,
   activityName: string
@@ -33,12 +56,13 @@ export function mapStravaTypeToWorkoutType(
 }
 
 export function workoutTitleForType(type: string): string {
-  switch (type) {
-    case "swim": return "Swim";
-    case "upper_body": return "Upper Body";
-    case "lower_body": return "Lower Body";
-    case "cross_training": return "Cross Training";
-    case "rest": return "Active Recovery";
-    default: return type.charAt(0).toUpperCase() + type.slice(1);
-  }
+  return WORKOUT_TYPE_LABELS[type] ?? type.charAt(0).toUpperCase() + type.slice(1);
+}
+
+export function formatPaceWithUnit(distanceKm: number, durationSeconds: number): string {
+  if (distanceKm <= 0) return "0:00/km";
+  const paceSeconds = durationSeconds / distanceKm;
+  const mins = Math.floor(paceSeconds / 60);
+  const secs = Math.floor(paceSeconds % 60);
+  return `${mins}:${secs.toString().padStart(2, "0")}/km`;
 }

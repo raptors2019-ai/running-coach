@@ -1,5 +1,6 @@
 import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
+import { isRunningType, formatPaceWithUnit } from "./lib/stravaMapping";
 
 export const getTrainingPlan = query({
   handler: async (ctx) => {
@@ -155,68 +156,67 @@ export const unmarkWorkoutComplete = mutation({
   },
 });
 
-function formatPace(distanceKm: number, durationSeconds: number): string {
-  if (distanceKm <= 0) return "0:00/km";
-  const paceSeconds = durationSeconds / distanceKm;
-  const mins = Math.floor(paceSeconds / 60);
-  const secs = Math.floor(paceSeconds % 60);
-  return `${mins}:${secs.toString().padStart(2, "0")}/km`;
-}
-
-export const autoCompleteFromActivity = internalMutation({
+export const autoCompleteFromActivities = internalMutation({
   args: {
-    date: v.string(),
-    stravaActivityId: v.string(),
-    actualDistance: v.number(),
-    actualDuration: v.number(),
-    avgHeartRate: v.optional(v.number()),
-    mappedType: v.string(),
-    mappedTitle: v.string(),
-    activityName: v.string(),
+    activities: v.array(v.object({
+      date: v.string(),
+      stravaActivityId: v.string(),
+      actualDistance: v.number(),
+      actualDuration: v.number(),
+      avgHeartRate: v.optional(v.number()),
+      mappedType: v.string(),
+      mappedTitle: v.string(),
+      activityName: v.string(),
+    })),
   },
-  handler: async (ctx, args): Promise<"completed" | "already_done" | "no_workout"> => {
-    const workout = await ctx.db
-      .query("workouts")
-      .withIndex("by_date", (q) => q.eq("date", args.date))
-      .first();
+  handler: async (ctx, args): Promise<{ autoCompleted: number; alreadyDone: number }> => {
+    let autoCompleted = 0;
+    let alreadyDone = 0;
 
-    if (!workout) return "no_workout";
-    if (workout.completed || workout.stravaActivityId) return "already_done";
+    for (const activity of args.activities) {
+      const workout = await ctx.db
+        .query("workouts")
+        .withIndex("by_date", (q) => q.eq("date", activity.date))
+        .first();
 
-    const pace = args.actualDistance > 0
-      ? formatPace(args.actualDistance, args.actualDuration)
-      : undefined;
+      if (!workout) continue;
+      if (workout.completed || workout.stravaActivityId) {
+        alreadyDone++;
+        continue;
+      }
 
-    const isRunType = (t: string) =>
-      ["easy", "long", "tempo", "intervals", "race_pace", "recovery", "run"].includes(t);
+      const pace = activity.actualDistance > 0
+        ? formatPaceWithUnit(activity.actualDistance, activity.actualDuration)
+        : undefined;
 
-    const plannedIsRun = isRunType(workout.type);
-    const activityIsRun = args.mappedType === "run";
+      const plannedIsRun = isRunningType(workout.type);
+      const activityIsRun = activity.mappedType === "run";
 
-    const patch: Record<string, unknown> = {
-      completed: true,
-      actualDistance: args.actualDistance,
-      actualDuration: args.actualDuration,
-      actualPace: pace,
-      avgHeartRate: args.avgHeartRate,
-      stravaActivityId: args.stravaActivityId,
-    };
+      const patch: Record<string, unknown> = {
+        completed: true,
+        actualDistance: activity.actualDistance,
+        actualDuration: activity.actualDuration,
+        actualPace: pace,
+        avgHeartRate: activity.avgHeartRate,
+        stravaActivityId: activity.stravaActivityId,
+      };
 
-    if (plannedIsRun && !activityIsRun) {
-      // Planned run but did non-run activity
-      patch.originalType = workout.type;
-      patch.type = args.mappedType;
-      patch.title = args.mappedTitle;
-      patch.notes = `Originally planned: ${workout.title}. Did: ${args.activityName}`;
-    } else if (!plannedIsRun && activityIsRun) {
-      // Planned non-run but did a run
-      patch.originalType = workout.type;
-      patch.type = "easy";
-      patch.title = "Easy Run";
-      patch.notes = `Originally planned: ${workout.title}. Did: ${args.activityName}`;
+      if (plannedIsRun && !activityIsRun) {
+        patch.originalType = workout.type;
+        patch.type = activity.mappedType;
+        patch.title = activity.mappedTitle;
+        patch.notes = `Originally planned: ${workout.title}. Did: ${activity.activityName}`;
+      } else if (!plannedIsRun && activityIsRun) {
+        patch.originalType = workout.type;
+        patch.type = "easy";
+        patch.title = "Easy Run";
+        patch.notes = `Originally planned: ${workout.title}. Did: ${activity.activityName}`;
+      }
+
+      await ctx.db.patch(workout._id, patch);
+      autoCompleted++;
     }
 
-    await ctx.db.patch(workout._id, patch);
-    return "completed";
+    return { autoCompleted, alreadyDone };
   },
 });
