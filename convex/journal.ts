@@ -147,6 +147,30 @@ export const updateUserNotes = mutation({
   },
   handler: async (ctx, args) => {
     const { entryId, ...data } = args;
-    await ctx.db.patch(entryId, data);
+    const patch: Record<string, unknown> = { ...data };
+    if (args.userNotes && args.userNotes.trim()) {
+      patch.coachFeedbackUnlocked = true;
+    }
+    await ctx.db.patch(entryId, patch);
+  },
+});
+
+export const getTodayJournalStatus = query({
+  args: { today: v.string() },
+  handler: async (ctx, args) => {
+    const entry = await ctx.db
+      .query("journalEntries")
+      .withIndex("by_date", (q) => q.eq("date", args.today))
+      .first();
+
+    if (!entry) {
+      return { hasEntry: false, hasNotes: false, coachFeedbackUnlocked: false };
+    }
+
+    return {
+      hasEntry: true,
+      hasNotes: !!(entry.userNotes?.trim()),
+      coachFeedbackUnlocked: entry.coachFeedbackUnlocked ?? false,
+    };
   },
 });

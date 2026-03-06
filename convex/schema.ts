@@ -55,6 +55,7 @@ export default defineSchema({
       v.literal("tired"),
       v.literal("bad")
     )),
+    coachFeedbackUnlocked: v.optional(v.boolean()),
   }).index("by_date", ["date"])
     .index("by_workout", ["workoutId"]),
 
@@ -63,6 +64,7 @@ export default defineSchema({
     refreshToken: v.string(),
     expiresAt: v.number(),
     athleteId: v.string(),
+    lastSyncAt: v.optional(v.number()),
   }),
 
   weatherCache: defineTable({

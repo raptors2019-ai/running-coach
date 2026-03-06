@@ -10,6 +10,7 @@
 
 import type * as backfill from "../backfill.js";
 import type * as journal from "../journal.js";
+import type * as lib_stravaMapping from "../lib/stravaMapping.js";
 import type * as seed from "../seed.js";
 import type * as strava from "../strava.js";
 import type * as weather from "../weather.js";
@@ -24,6 +25,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   backfill: typeof backfill;
   journal: typeof journal;
+  "lib/stravaMapping": typeof lib_stravaMapping;
   seed: typeof seed;
   strava: typeof strava;
   weather: typeof weather;

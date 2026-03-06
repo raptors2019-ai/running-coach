@@ -5,11 +5,14 @@ import { DailyWorkoutCard } from "@/components/daily-workout-card";
 import { WeatherWidget } from "@/components/weather-widget";
 import { RacePrediction } from "@/components/race-prediction";
 import { WeekPreview } from "@/components/week-preview";
+import { JournalNudgeBanner } from "@/components/journal-nudge-banner";
+import { useAutoStravaSync } from "@/lib/use-auto-sync";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { formatDistance } from "@/lib/pace-utils";
 
 export default function HomePage() {
+  useAutoStravaSync();
   const plan = useQuery(api.workouts.getTrainingPlan);
   const workouts = useQuery(api.workouts.getAllWorkouts);
 
@@ -35,6 +38,8 @@ export default function HomePage() {
       </div>
 
       <DailyWorkoutCard />
+
+      <JournalNudgeBanner />
 
       {workouts && <WeekPreview workouts={workouts} />}
 

@@ -13,7 +13,7 @@ export default function SettingsPage() {
   const stravaAuth = useQuery(api.strava.getStravaAuth);
   const plan = useQuery(api.workouts.getTrainingPlan);
   const seedPlan = useMutation(api.seed.seedTrainingPlan);
-  const syncStrava = useAction(api.strava.syncStravaActivities);
+  const syncStrava = useAction(api.strava.syncAndAutoMatch);
   const fetchWeather = useAction(api.weather.fetchWeather);
 
   const [syncing, setSyncing] = useState(false);
@@ -43,8 +43,8 @@ export default function SettingsPage() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const activities = await syncStrava();
-      alert(`Found ${activities.length} runs`);
+      const result = await syncStrava();
+      alert(`Synced ${result.synced} activities. ${result.autoCompleted} auto-completed, ${result.alreadyDone} already done.`);
     } catch {
       alert("Failed to sync. Check Strava connection.");
     } finally {
