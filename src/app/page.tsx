@@ -1,18 +1,23 @@
 "use client";
 
+import { useState } from "react";
 import { CountdownBadge } from "@/components/countdown-badge";
 import { DailyWorkoutCard } from "@/components/daily-workout-card";
 import { WeatherWidget } from "@/components/weather-widget";
 import { RacePrediction } from "@/components/race-prediction";
 import { WeekPreview } from "@/components/week-preview";
 import { JournalNudgeBanner } from "@/components/journal-nudge-banner";
+import { WeatherOptimizerDialog } from "@/components/weather-optimizer-dialog";
+import { Button } from "@/components/ui/button";
 import { useAutoStravaSync } from "@/lib/use-auto-sync";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { formatDistance } from "@/lib/pace-utils";
+import { CloudSun } from "lucide-react";
 
 export default function HomePage() {
   useAutoStravaSync();
+  const [optimizerOpen, setOptimizerOpen] = useState(false);
   const plan = useQuery(api.workouts.getTrainingPlan);
   const workouts = useQuery(api.workouts.getAllWorkouts);
 
@@ -42,6 +47,19 @@ export default function HomePage() {
       <JournalNudgeBanner />
 
       {workouts && <WeekPreview workouts={workouts} />}
+
+      <Button
+        variant="outline"
+        className="w-full"
+        onClick={() => setOptimizerOpen(true)}
+      >
+        <CloudSun className="h-4 w-4 mr-2" />
+        Optimize for Weather
+      </Button>
+      <WeatherOptimizerDialog
+        open={optimizerOpen}
+        onOpenChange={setOptimizerOpen}
+      />
 
       <WeatherWidget />
 

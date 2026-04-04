@@ -168,6 +168,14 @@ export const getWorkoutsByDate = query({
   },
 });
 
+export const getUpcomingWorkouts = query({
+  args: { startDate: v.string(), endDate: v.string() },
+  handler: async (ctx, args) => {
+    const all = await ctx.db.query("workouts").collect();
+    return all.filter((w) => w.date >= args.startDate && w.date <= args.endDate);
+  },
+});
+
 export const autoCompleteFromActivities = internalMutation({
   args: {
     activities: v.array(v.object({

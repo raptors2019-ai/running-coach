@@ -78,5 +78,15 @@ export default defineSchema({
     icon: v.string(),
     precipitation: v.number(),
     fetchedAt: v.number(),
+    // Forecast-specific AM/PM fields (optional, backward compatible)
+    temperatureAm: v.optional(v.number()),
+    temperaturePm: v.optional(v.number()),
+    conditionAm: v.optional(v.string()),
+    conditionPm: v.optional(v.string()),
+    precipitationAm: v.optional(v.number()),
+    precipitationPm: v.optional(v.number()),
+    windSpeedAm: v.optional(v.number()),
+    windSpeedPm: v.optional(v.number()),
+    isForecast: v.optional(v.boolean()),
   }).index("by_date", ["date"]),
 });
