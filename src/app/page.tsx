@@ -2,18 +2,40 @@
 
 import { useState } from "react";
 import { CountdownBadge } from "@/components/countdown-badge";
-import { DailyWorkoutCard } from "@/components/daily-workout-card";
 import { WeatherWidget } from "@/components/weather-widget";
-import { RacePrediction } from "@/components/race-prediction";
 import { WeekPreview } from "@/components/week-preview";
+import { UpcomingDays } from "@/components/upcoming-days";
 import { JournalNudgeBanner } from "@/components/journal-nudge-banner";
 import { WeatherOptimizerDialog } from "@/components/weather-optimizer-dialog";
 import { Button } from "@/components/ui/button";
 import { useAutoStravaSync } from "@/lib/use-auto-sync";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { formatDistance } from "@/lib/pace-utils";
+import { formatDistance, getLocalDateString } from "@/lib/pace-utils";
 import { CloudSun } from "lucide-react";
+import { startOfWeek, endOfWeek, parseISO } from "date-fns";
+
+function getWeeklyStats(workouts: Array<{ date: string; completed: boolean; targetDistance?: number; actualDistance?: number }>) {
+  const today = parseISO(getLocalDateString());
+  // Week starts on Sunday
+  const weekStart = startOfWeek(today, { weekStartsOn: 0 });
+  const weekEnd = endOfWeek(today, { weekStartsOn: 0 });
+
+  const weekStartStr = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, "0")}-${String(weekStart.getDate()).padStart(2, "0")}`;
+  const weekEndStr = `${weekEnd.getFullYear()}-${String(weekEnd.getMonth() + 1).padStart(2, "0")}-${String(weekEnd.getDate()).padStart(2, "0")}`;
+
+  const thisWeek = workouts.filter((w) => w.date >= weekStartStr && w.date <= weekEndStr);
+  const completed = thisWeek.filter((w) => w.completed);
+  const plannedKm = thisWeek.reduce((sum, w) => sum + (w.targetDistance || 0), 0);
+  const completedKm = completed.reduce((sum, w) => sum + (w.actualDistance || w.targetDistance || 0), 0);
+
+  return {
+    completedCount: completed.length,
+    totalCount: thisWeek.length,
+    completedKm,
+    plannedKm,
+  };
+}
 
 export default function HomePage() {
   useAutoStravaSync();
@@ -21,14 +43,7 @@ export default function HomePage() {
   const plan = useQuery(api.workouts.getTrainingPlan);
   const workouts = useQuery(api.workouts.getAllWorkouts);
 
-  const completedCount = workouts?.filter((w) => w.completed).length || 0;
-  const totalCount = workouts?.length || 0;
-  const totalPlannedKm =
-    workouts?.reduce((sum, w) => sum + (w.targetDistance || 0), 0) || 0;
-  const completedKm =
-    workouts
-      ?.filter((w) => w.completed)
-      .reduce((sum, w) => sum + (w.actualDistance || w.targetDistance || 0), 0) || 0;
+  const stats = workouts ? getWeeklyStats(workouts) : null;
 
   return (
     <div className="p-4 space-y-4">
@@ -42,11 +57,11 @@ export default function HomePage() {
         <CountdownBadge />
       </div>
 
-      <DailyWorkoutCard />
+      {workouts && <WeekPreview workouts={workouts} />}
 
       <JournalNudgeBanner />
 
-      {workouts && <WeekPreview workouts={workouts} />}
+      {workouts && <UpcomingDays workouts={workouts} />}
 
       <Button
         variant="outline"
@@ -63,22 +78,22 @@ export default function HomePage() {
 
       <WeatherWidget />
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-muted/50 rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold">{completedCount}/{totalCount}</div>
-          <div className="text-xs text-muted-foreground">Workouts Done</div>
-        </div>
-        <div className="bg-muted/50 rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold">
-            {formatDistance(completedKm)}
+      {stats && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-muted/50 rounded-lg p-3 text-center">
+            <div className="text-2xl font-bold">{stats.completedCount}/{stats.totalCount}</div>
+            <div className="text-xs text-muted-foreground">This Week</div>
           </div>
-          <div className="text-xs text-muted-foreground">
-            of {formatDistance(totalPlannedKm)}
+          <div className="bg-muted/50 rounded-lg p-3 text-center">
+            <div className="text-2xl font-bold">
+              {formatDistance(stats.completedKm)}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              of {formatDistance(stats.plannedKm)}
+            </div>
           </div>
         </div>
-      </div>
-
-      <RacePrediction />
+      )}
     </div>
   );
 }
