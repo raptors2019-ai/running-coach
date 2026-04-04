@@ -152,7 +152,7 @@ export const syncStravaActivities = action({
 });
 
 export const syncAndAutoMatch = action({
-  handler: async (ctx): Promise<{ synced: number; autoCompleted: number; alreadyDone: number }> => {
+  handler: async (ctx): Promise<{ synced: number; autoCompleted: number; alreadyDone: number; newActivitiesCreated: number }> => {
     const activities = await fetchStravaActivities(ctx);
 
     const mappedActivities = activities.map((activity) => {

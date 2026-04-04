@@ -59,6 +59,33 @@ export function workoutTitleForType(type: string): string {
   return WORKOUT_TYPE_LABELS[type] ?? type.charAt(0).toUpperCase() + type.slice(1);
 }
 
+const NON_RUNNING_TYPES = new Set([
+  "cross_training", "upper_body", "lower_body", "swim", "rest", "basketball",
+]);
+
+export function typeAffinityScore(plannedType: string, activityType: string): number {
+  if (plannedType === activityType) return 3;
+  const plannedIsRun = isRunningType(plannedType);
+  const activityIsRun = isRunningType(activityType) || activityType === "run";
+  if (plannedIsRun && activityIsRun) return 2;
+  const plannedIsNonRun = NON_RUNNING_TYPES.has(plannedType);
+  const activityIsNonRun = NON_RUNNING_TYPES.has(activityType);
+  if (plannedIsNonRun && activityIsNonRun) return 1;
+  return 0;
+}
+
+export function inferWeekNumber(date: string, planStartDate: string): number {
+  const d = new Date(date + "T12:00:00");
+  const start = new Date(planStartDate + "T12:00:00");
+  const diffDays = Math.floor((d.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  return Math.max(1, Math.floor(diffDays / 7) + 1);
+}
+
+export function getDayOfWeek(date: string): string {
+  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  return days[new Date(date + "T12:00:00").getDay()];
+}
+
 export function formatPaceWithUnit(distanceKm: number, durationSeconds: number): string {
   if (distanceKm <= 0) return "0:00/km";
   const paceSeconds = durationSeconds / distanceKm;

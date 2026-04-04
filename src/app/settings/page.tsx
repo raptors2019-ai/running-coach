@@ -44,7 +44,7 @@ export default function SettingsPage() {
     setSyncing(true);
     try {
       const result = await syncStrava();
-      alert(`Synced ${result.synced} activities. ${result.autoCompleted} auto-completed, ${result.alreadyDone} already done.`);
+      alert(`Synced ${result.synced} activities. ${result.autoCompleted} auto-completed, ${result.newActivitiesCreated} new activities created, ${result.alreadyDone} already done.`);
     } catch {
       alert("Failed to sync. Check Strava connection.");
     } finally {

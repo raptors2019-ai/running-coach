@@ -1,7 +1,7 @@
 import { PaceZone } from "./types";
 
 export const RACE_DATE = "2026-04-18";
-export const PLAN_START_DATE = "2026-03-05";
+export const PLAN_START_DATE = "2026-04-03";
 export const RACE_DISTANCE_KM = 10;
 export const GOAL_TIME_MINUTES = 60;
 export const GOAL_PACE = "6:00"; // min/km
@@ -59,11 +59,7 @@ export function isNonRunningType(type: string): boolean {
 export const RUNNING_TYPES = new Set(["easy", "tempo", "intervals", "long", "race", "shakeout", "race_pace"]);
 
 export const MIN_RUNS_PER_WEEK: Record<number, number> = {
-  1: 4,
-  2: 5,
-  3: 4,
-  4: 4,
-  5: 5,
-  6: 4,
-  7: 2,
+  1: 3,
+  2: 2,
+  3: 3,
 };

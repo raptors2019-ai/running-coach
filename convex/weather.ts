@@ -56,7 +56,7 @@ export const fetchWeather = action({
     }
 
     const data = await response.json();
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Toronto" });
 
     const weather = {
       date: today,

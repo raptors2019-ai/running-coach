@@ -39,6 +39,7 @@ export default defineSchema({
     notes: v.optional(v.string()),
     stravaActivityId: v.optional(v.string()),
     originalType: v.optional(v.string()),
+    isUnplanned: v.optional(v.boolean()),
   }).index("by_date", ["date"])
     .index("by_plan", ["planId"])
     .index("by_week", ["planId", "weekNumber"]),

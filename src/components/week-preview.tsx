@@ -52,16 +52,18 @@ export function WeekPreview({ workouts }: WeekPreviewProps) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   });
 
-  const weekWorkouts = next7Days.map((date) => ({
-    date,
-    workout: workouts.find((w) => w.date === date) || null,
-  }));
+  const weekWorkouts = next7Days.map((date) => {
+    const dayWorkouts = workouts.filter((w) => w.date === date);
+    const planned = dayWorkouts.find((w) => !w.isUnplanned) || dayWorkouts[0] || null;
+    const extras = dayWorkouts.filter((w) => w !== planned);
+    return { date, workout: planned, extraCount: extras.length };
+  });
 
   return (
     <div className="space-y-2">
       <h2 className="text-sm font-semibold text-muted-foreground">This Week</h2>
       <div className="grid grid-cols-7 gap-1.5">
-        {weekWorkouts.map(({ date, workout }) => {
+        {weekWorkouts.map(({ date, workout, extraCount }) => {
           const isToday = date === today;
           const type = workout?.type || "rest";
           const bgColor = BG_COLORS[type] || "bg-gray-50 border-gray-200";
@@ -82,7 +84,12 @@ export function WeekPreview({ workouts }: WeekPreviewProps) {
               <span className={`text-xs font-bold ${isToday ? "text-blue-700" : ""}`}>
                 {format(parseISO(date), "d")}
               </span>
-              <div className={`h-2 w-2 rounded-full mt-1 ${dotColor}`} />
+              <div className="flex items-center gap-0.5 mt-1">
+                <div className={`h-2 w-2 rounded-full ${dotColor}`} />
+                {extraCount > 0 && (
+                  <span className="text-[7px] font-bold text-muted-foreground">+{extraCount}</span>
+                )}
+              </div>
               {workout?.completed && (
                 <CheckCircle2 className="absolute -top-1 -right-1 h-3.5 w-3.5 text-green-600 bg-white rounded-full" />
               )}
