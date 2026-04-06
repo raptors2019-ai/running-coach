@@ -16,8 +16,8 @@ const TRAINING_PLAN: WorkoutData[] = [
   // Phase 1: Reintroduce Running (Apr 3-6)
   { date: "2026-04-03", weekNumber: 1, dayOfWeek: "Fri", type: "easy", title: "Easy Run", description: "10-12km @ 7:00-7:30/km. First real run back - go genuinely easy. Pay attention to how legs feel at km 8+.", targetDistance: 11, targetPace: "7:00-7:30" },
   { date: "2026-04-04", weekNumber: 1, dayOfWeek: "Sat", type: "upper_body", title: "Upper Body + Easy Run", description: "Upper body lift AM. 5km easy @ 7:00-7:30 + 4x100m strides PM.", targetDistance: 5, targetPace: "7:00-7:30" },
-  { date: "2026-04-05", weekNumber: 1, dayOfWeek: "Sun", type: "long", title: "Long Run", description: "10-12km @ 6:45-7:15/km. Endurance check - if this feels comfortable, your aerobic engine is fine for race day.", targetDistance: 11, targetPace: "6:45-7:15" },
-  { date: "2026-04-06", weekNumber: 1, dayOfWeek: "Mon", type: "lower_body", title: "Lower Body", description: "Lower body lift. No running. Legs need recovery after the weekend." },
+  { date: "2026-04-05", weekNumber: 1, dayOfWeek: "Sun", type: "rest", title: "Rest Day", description: "Full rest day. You ran 11km on Friday — aerobic base is proven." },
+  { date: "2026-04-06", weekNumber: 1, dayOfWeek: "Mon", type: "lower_body", title: "Lower Body + Easy Run", description: "Lower body lift AM. 5km easy @ 7:00-7:30 PM to shake legs out after 2 days off. Keep it relaxed — race pace test tomorrow.", targetDistance: 5, targetPace: "7:00-7:30" },
 
   // Phase 2: Race Pace Test + Sharpening (Apr 7-10)
   { date: "2026-04-07", weekNumber: 2, dayOfWeek: "Tue", type: "race_pace", title: "RACE PACE TEST", description: "WU 1.5km + 5km @ 6:00/km + CD 1.5km. THE key workout. Lock in 6:00 and hold it. This tells you everything about race day.", targetDistance: 8, targetPace: "6:00" },
@@ -62,6 +62,41 @@ export const reseedTrainingPlan = mutation({
 
     console.log(`Reseeded ${TRAINING_PLAN.length} workouts`);
     return planId;
+  },
+});
+
+export const reseedFromDate = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoffDate = "2026-04-05";
+
+    // Get existing plan
+    const plan = await ctx.db.query("trainingPlan").first();
+    if (!plan) throw new Error("No training plan found. Run seedTrainingPlan first.");
+
+    // Delete workouts from cutoff date onward
+    const workouts = await ctx.db.query("workouts").collect();
+    let deleted = 0;
+    for (const w of workouts) {
+      if (w.date >= cutoffDate) {
+        // Also delete any journal entries for this workout
+        const journals = await ctx.db.query("journalEntries").collect();
+        for (const j of journals) {
+          if (j.workoutId === w._id) await ctx.db.delete(j._id);
+        }
+        await ctx.db.delete(w._id);
+        deleted++;
+      }
+    }
+
+    // Re-insert workouts from cutoff date onward using updated plan
+    const newWorkouts = TRAINING_PLAN.filter((w) => w.date >= cutoffDate);
+    for (const workout of newWorkouts) {
+      await ctx.db.insert("workouts", { planId: plan._id, ...workout, completed: false });
+    }
+
+    console.log(`Deleted ${deleted} workouts, inserted ${newWorkouts.length} from ${cutoffDate} onward`);
+    return plan._id;
   },
 });
 
