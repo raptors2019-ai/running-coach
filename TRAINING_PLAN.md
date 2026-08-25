@@ -1,88 +1,128 @@
-# Revised 15-Day Training Plan — Mississauga 10K Sub-60
+# 40-Day Training Plan — Oakville 5K Sub-25
 
-**Race:** Mississauga 10K  
-**Race Date:** Saturday, April 18, 2026  
-**Goal:** Sub 1:00:00 (6:00/km pace)  
-**Plan Start:** Friday, April 3, 2026  
+**Race:** Oakville 5K — Coronation Park
+**Race Date:** Sunday, October 4, 2026
+**Goal:** Sub 25:00 (5:00/km) — stretch 24:30, decided by the checkpoints
+**Plan Start:** Tuesday, August 25, 2026
 
----
+**Where you're starting from:** Foxtrail race (Apr 18) was 56:50 for 10.3km = 5:31/km, which converts to a ~26:25 5K — matching last year's ~26:30. Sub-25 is a ~6% improvement in 6 weeks; you improved more than that in April. Currently cruising short 2ks at 7:00+/km.
 
-## Phase 1: Reintroduce Running (Apr 3-6) — ~27 km
-
-| Date | Day | Type | Workout | Distance | Pace | Status |
-|------|-----|------|---------|----------|------|--------|
-| Apr 3 | Fri | Easy Run | 10-12km easy. First real run back. Go genuinely easy, pay attention to legs at km 8+. | 10-12 km | 7:00-7:30/km | [ ] |
-| Apr 4 | Sat | Upper Body + Easy Run | Upper body lift AM. 5km easy + 4x100m strides PM. | 5 km | 7:00-7:30/km | [ ] |
-| Apr 5 | Sun | Long Run | 10-12km. Endurance check — if comfortable, aerobic engine is fine. | 10-12 km | 6:45-7:15/km | [ ] |
-| Apr 6 | Mon | Lower Body | Lower body lift. No running. Legs need recovery. | — | — | [ ] |
-
-**Key point:** Go genuinely easy on all runs. Your cardio from swimming is ahead of your running-specific fitness. Let your legs adapt.
+**Weekly rhythm:** Tuesday = speed (the one run that can't be skipped). Thursday = zone 2. Saturday = partner run (2-3km, genuinely conversational). Sunday = zone 2 long-ish (moveable). Upper body Monday, lower body Wednesday (day after speed — hard days hard).
 
 ---
 
-## Phase 2: Race Pace Test + Sharpening (Apr 7-10) — ~20 km
+## Week 1: Rebuild + Benchmark (Aug 25-30) — ~14 km
 
 | Date | Day | Type | Workout | Distance | Pace | Status |
 |------|-----|------|---------|----------|------|--------|
-| **Apr 7** | **Tue** | **RACE PACE TEST** | **WU 1.5km + 5km @ 6:00/km + CD 1.5km. THE key workout. Lock in 6:00 and hold.** | **8 km** | **6:00/km** | [ ] |
-| Apr 8 | Wed | Upper Body + Recovery Run | Upper body lift. 4km recovery, very easy shake-out. | 4 km | 7:15-7:45/km | [ ] |
-| Apr 9 | Thu | Tempo Intervals | WU 1.5km + 4x1km @ 5:50-6:00/km (90s jog rest) + CD 1.5km. Hold race pace under fatigue. | 8 km | 5:50-6:00/km | [ ] |
-| Apr 10 | Fri | Lower Body | Lower body lift. No running. Last hard leg day before race. | — | — | [ ] |
+| Aug 25 | Tue | Easy | 4km easy + 4x100m strides. Wake the legs up. | 4 km | 6:45-7:15 | [ ] |
+| Aug 26 | Wed | Upper Body | Lift only. Legs fresh for tomorrow. | — | — | [ ] |
+| **Aug 27** | **Thu** | **BENCHMARK** | **WU 1.5km + 2km time trial + CD 1km. Calibrates the whole plan.** | **4.5 km** | **all-out controlled** | [ ] |
+| Aug 28 | Fri | Lower Body | Lift only. | — | — | [ ] |
+| Aug 29 | Sat | Partner Run | 2-3km conversational with your gf. Real recovery volume. | 2.5 km | 7:00+ | [ ] |
+| Aug 30 | Sun | Zone 2 | 5km relaxed. Moveable to Monday. | 5 km | 6:45-7:15 | [ ] |
 
-**Key point:** The Apr 7 test tells you everything. If you hold 6:00/km for 5km and it feels controlled but hard — sub-60 is real. If you can't hold past 3km, adjust race target to 61-62 min.
+**Benchmark decision:** 2K under 9:50 (4:55/km) → chase 24:30. 9:50-10:30 → sub-25 is the goal. Over 10:30 → build and retest week 3.
 
 ---
 
-## Phase 3: Cottage + Taper + Race (Apr 11-18) — ~12 km running + Race
+## Week 2: Raw Speed (Aug 31 - Sep 6) — ~19 km
 
 | Date | Day | Type | Workout | Distance | Pace | Status |
 |------|-----|------|---------|----------|------|--------|
-| Apr 11 | Sat | Cottage — Swim/Bike | Swim or easy bike if available. No running needed. | — | — | [ ] |
-| Apr 12 | Sun | Cottage — Swim/Rest | Swim, light walk, enjoy it. No running. | — | — | [ ] |
-| Apr 13 | Mon | Easy + Strides | 5km easy + 4x100m strides. Back from cottage, shake legs out. | 5 km | 7:00-7:20/km | [ ] |
-| Apr 14 | Tue | Swim | 20-30 min easy swim. Keeps cardio up, zero leg stress. | — | — | [ ] |
-| Apr 15 | Wed | Easy + Strides | 4km easy + 3x100m strides. Last run with any speed. | 4 km | 7:00-7:20/km | [ ] |
-| Apr 16 | Thu | Swim or Rest | Easy swim if you want, or full rest. No running. | — | — | [ ] |
-| Apr 17 | Fri | Shakeout | 3km very easy + 2x100m strides. Lay out race gear tonight. | 3 km | 7:30+/km | [ ] |
-| **Apr 18** | **Sat** | **RACE DAY** | **Mississauga 10K** | **10 km** | **6:00/km** | [ ] |
+| Aug 31 | Mon | Upper Body | Lift only. | — | — | [ ] |
+| **Sep 1** | **Tue** | **Intervals** | **WU 1.5km + 8x400m @ 4:45-4:55/km (90s jog) + CD 1km. Even splits — don't hero the first two.** | **7 km** | **4:45-4:55** | [ ] |
+| Sep 2 | Wed | Lower Body | Lift, day after speed. | — | — | [ ] |
+| Sep 3 | Thu | Zone 2 | 5km genuinely easy. | 5 km | 6:45-7:15 | [ ] |
+| Sep 4 | Fri | Rest | Full rest or easy swim. | — | — | [ ] |
+| Sep 5 | Sat | Partner Run | 2-3km conversational. | 2.5 km | 7:00+ | [ ] |
+| Sep 6 | Sun | Long Run | 6km. Builds the floor under race pace. | 6 km | 6:30-7:00 | [ ] |
 
-**Key point:** No lifting this phase. Swim or bike on off days to keep blood flowing without leg stress. You might feel sluggish during taper — that's normal. Trust the process.
+---
+
+## Week 3: VO2max (Sep 7-13) — ~20 km
+
+| Date | Day | Type | Workout | Distance | Pace | Status |
+|------|-----|------|---------|----------|------|--------|
+| Sep 7 | Mon | Upper Body | Lift only. | — | — | [ ] |
+| **Sep 8** | **Tue** | **Intervals** | **WU 1.5km + 5x800m @ 4:50-5:00/km (2:30 jog) + CD 1km. The engine-builder.** | **7 km** | **4:50-5:00** | [ ] |
+| Sep 9 | Wed | Lower Body | Lift. | — | — | [ ] |
+| Sep 10 | Thu | Zone 2 | 5km easy + 4x100m strides. | 5 km | 6:45-7:15 | [ ] |
+| Sep 11 | Fri | Rest | Full rest or easy swim. | — | — | [ ] |
+| Sep 12 | Sat | Partner Run | 2-3km conversational. | 2.5 km | 7:00+ | [ ] |
+| Sep 13 | Sun | Long Run | 7km — longest of the plan. Protect this one. | 7 km | 6:30-7:00 | [ ] |
+
+---
+
+## Week 4: Race Pace Test (Sep 14-20) — ~19 km
+
+| Date | Day | Type | Workout | Distance | Pace | Status |
+|------|-----|------|---------|----------|------|--------|
+| Sep 14 | Mon | Upper Body | Lift only. Fresh legs for THE key workout. | — | — | [ ] |
+| **Sep 15** | **Tue** | **RACE PACE TEST** | **WU 1.5km + 3km continuous @ 5:00/km + CD 1km. The decision point.** | **5.5 km** | **5:00** | [ ] |
+| Sep 16 | Wed | Lower Body | Lift. | — | — | [ ] |
+| Sep 17 | Thu | Zone 2 | 5-6km easy. | 6 km | 6:45-7:15 | [ ] |
+| Sep 18 | Fri | Rest | Full rest or easy swim. | — | — | [ ] |
+| Sep 19 | Sat | Partner Run | 2-3km conversational. | 2.5 km | 7:00+ | [ ] |
+| Sep 20 | Sun | Long Run | 7km — last long one, volume drops from here. | 7 km | 6:30-7:00 | [ ] |
+
+**Test decision (the April formula):** Controlled-but-hard → sub-25 locked. Felt easy → target 24:15-24:30. Couldn't hold past 2km → race for 25:30 with a negative split.
+
+---
+
+## Week 5: Sharpen (Sep 21-27) — ~18 km
+
+| Date | Day | Type | Workout | Distance | Pace | Status |
+|------|-----|------|---------|----------|------|--------|
+| Sep 21 | Mon | Upper Body | Lift only. | — | — | [ ] |
+| **Sep 22** | **Tue** | **The April Special** | **WU 1.5km + 4x1km @ 4:50-5:00/km (90s jog) + CD 1km. The race in disguise.** | **7.5 km** | **4:50-5:00** | [ ] |
+| Sep 23 | Wed | Lower Body | LAST hard leg day before the race. | — | — | [ ] |
+| Sep 24 | Thu | Zone 2 | 5km easy + 4x100m strides. | 5 km | 6:45-7:15 | [ ] |
+| Sep 25 | Fri | Rest | Full rest or easy swim. | — | — | [ ] |
+| Sep 26 | Sat | Partner Run | 2-3km conversational. | 2.5 km | 7:00+ | [ ] |
+| Sep 27 | Sun | Easy | 5km easy. Taper begins — resist doing more. | 5 km | 6:45-7:15 | [ ] |
+
+---
+
+## Week 6: Taper + Race (Sep 28 - Oct 4) — ~10 km + Race
+
+| Date | Day | Type | Workout | Distance | Pace | Status |
+|------|-----|------|---------|----------|------|--------|
+| Sep 28 | Mon | Upper Body | Light upper only — last lift. No legs this week. | — | — | [ ] |
+| Sep 29 | Tue | Easy | 4km easy + 4x100m strides. | 4 km | 6:45-7:15 | [ ] |
+| Sep 30 | Wed | Rest | Full rest. Sluggish = taper working. | — | — | [ ] |
+| Oct 1 | Thu | Sharpener | WU 1km + 3x400m @ 5:00/km (full recovery) + CD 1km. Should feel EASY. | 3.5 km | 5:00 | [ ] |
+| Oct 2 | Fri | Rest | Hydrate, sleep. | — | — | [ ] |
+| Oct 3 | Sat | Shakeout | 2km very easy + 2x100m strides — perfect partner run. Gear out tonight. | 2 km | 7:15+ | [ ] |
+| **Oct 4** | **Sun** | **RACE DAY** | **Oakville 5K — Coronation Park** | **5 km** | **5:00** | [ ] |
 
 ---
 
 ## Race Day Strategy
 
-| Segment | Pace | Cumulative Time | Notes |
-|---------|------|-----------------|-------|
-| Km 1 | 6:05-6:10 | ~6:10 | Hold back. Adrenaline will make it feel easy — that's a trap. |
-| Km 2-5 | 6:00 | ~30:00 | Find the 6:00 pacer. Run YOUR pace, not theirs if they're aggressive early. |
-| Km 6-8 | 6:00 | ~48:00 | This is where it gets honest. If struggling, 6:05 still gives ~60:30. |
-| Km 9-10 | 5:50-5:55 | ~59:00 | If you have anything left, empty the tank. |
+| Segment | Pace | Cumulative | Notes |
+|---------|------|------------|-------|
+| Km 1 | 5:03 | 5:03 | Hold back. April taught us the adrenaline trap. |
+| Km 2-4 | 5:00 | 20:03 | Lock in. You rehearsed this pace in the test and the 4x1km. |
+| Km 5 | 4:45-4:50 | **24:50** | Empty the tank. In a 5K there's no saving anything. |
 
-**Target splits:** 12:10 (2K) → 30:00 (5K) → 42:00 (7K) → 59:00 (finish)
-
----
-
-## Lifting Schedule
-
-| Session | Date | Notes |
-|---------|------|-------|
-| Upper Body #1 | Apr 4 (Sat) | Normal session |
-| Lower Body #1 | Apr 6 (Mon) | Normal session |
-| Upper Body #2 | Apr 8 (Wed) | Normal session |
-| Lower Body #2 | Apr 10 (Fri) | Last hard leg day — no lifting after this |
+If the checkpoints upgraded you to 24:30: run 4:57 flat through 4K and kick.
 
 ---
 
 ## Decision Points
 
-- **After Apr 7 race pace test:**
-  - 5km @ 6:00 felt **easy** → Sub-60 is locked. Run your own race on Apr 18.
-  - 5km @ 6:00 felt **controlled but hard** → Sub-60 is realistic. Find the 6:00 pacer and sit on them.
-  - **Couldn't hold past 3km** → Adjust to 61-62 min target. Find pacer, use drafting + adrenaline.
+- **Aug 27 benchmark (2K TT):** ≤9:50 → chase 24:30 | 9:50-10:30 → sub-25 | >10:30 → build + retest
+- **Sep 15 race pace test (3K @ 5:00):** controlled-but-hard → sub-25 locked | easy → 24:15-24:30 | couldn't hold → 25:30 negative split
+
+---
+
+## Lifting Schedule
+
+Upper body Mondays, lower body Wednesdays (day after speed — hard days hard, easy days easy). Sep 23 is the last hard leg day. Race week: light upper Monday only.
 
 ---
 
 ## Total Volume
 
-~62-67 km over 15 days (including race)
+~106 km over 6 weeks (including race). Peak weeks ~19-20 km.

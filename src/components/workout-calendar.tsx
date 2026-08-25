@@ -9,7 +9,8 @@ import { WorkoutDetailDialog } from "./workout-detail-dialog";
 import { useState } from "react";
 
 export function WorkoutCalendar() {
-  const workouts = useQuery(api.workouts.getAllWorkouts);
+  const allWorkouts = useQuery(api.workouts.getAllWorkouts);
+  const plan = useQuery(api.workouts.getTrainingPlan);
   const swapWorkoutDates = useMutation(api.workouts.swapWorkoutDates);
   const [selectedWorkout, setSelectedWorkout] = useState<Doc<"workouts"> | null>(null);
 
@@ -21,7 +22,7 @@ export function WorkoutCalendar() {
   });
   const sensors = useSensors(pointerSensor, touchSensor);
 
-  if (!workouts) {
+  if (!allWorkouts || !plan) {
     return (
       <div className="space-y-4">
         {[1, 2, 3].map((i) => (
@@ -30,6 +31,10 @@ export function WorkoutCalendar() {
       </div>
     );
   }
+
+  // Scope to the current plan — kept history from previous race blocks
+  // shares week numbers but belongs to an older planId.
+  const workouts = allWorkouts.filter((w) => w.planId === plan._id);
 
   const weeks = workouts.reduce(
     (acc, workout) => {
@@ -42,13 +47,12 @@ export function WorkoutCalendar() {
   );
 
   const weekLabels: Record<number, string> = {
-    1: "Week 1 - Baseline + Speed Intro",
-    2: "Week 2 - Build Volume + Speed",
-    3: "Week 3 - Peak Volume",
-    4: "Week 4 - Recovery/Deload",
-    5: "Week 5 - Sharpening",
-    6: "Week 6 - Taper",
-    7: "Race Week",
+    1: "Week 1 - Rebuild + Benchmark",
+    2: "Week 2 - Raw Speed",
+    3: "Week 3 - VO2max",
+    4: "Week 4 - Race Pace Test",
+    5: "Week 5 - Sharpen",
+    6: "Week 6 - Taper + Race",
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {

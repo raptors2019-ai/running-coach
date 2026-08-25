@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { format, parseISO } from "date-fns";
 import { paceToSeconds, secondsToPace } from "@/lib/pace-utils";
+import { GOAL_PACE } from "@/lib/constants";
 
 export function PaceChart() {
   const workouts = useQuery(api.workouts.getCompletedWorkouts);
@@ -59,7 +60,7 @@ export function PaceChart() {
     );
   }
 
-  const goalPaceSeconds = paceToSeconds("6:00");
+  const goalPaceSeconds = paceToSeconds(GOAL_PACE);
 
   return (
     <Card>
@@ -89,7 +90,7 @@ export function PaceChart() {
               y={goalPaceSeconds}
               stroke="#8b5cf6"
               strokeDasharray="5 5"
-              label={{ value: "Goal 6:00", position: "right", fontSize: 11 }}
+              label={{ value: `Goal ${GOAL_PACE}`, position: "right", fontSize: 11 }}
             />
             <Line
               type="monotone"

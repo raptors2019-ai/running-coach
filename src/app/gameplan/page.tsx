@@ -10,48 +10,63 @@ import { useState } from "react";
 const PHASES = [
   {
     number: 1,
-    dates: "Apr 3 - 6",
-    theme: "Reintroduce Running",
-    volume: "~27 km",
+    dates: "Aug 25 - 31",
+    theme: "Rebuild + Benchmark",
+    volume: "~14 km",
     color: "border-green-400",
     headerBg: "bg-green-50",
-    zone2: ["Easy run (10-12 km) at 7:00-7:30/km", "Long run (10-12 km) at 6:45-7:15/km", "Easy + strides (5 km)"],
-    zone5: ["4x100m strides after easy run"],
-    lifts: ["Upper body (Sat AM)", "Lower body (Mon)"],
+    zone2: ["Easy run + strides (4 km Tue)", "Partner easy run (2-3 km Sat)", "Zone 2 run (5 km Sun)"],
+    zone5: ["BENCHMARK: 2K time trial (Thu) - calibrates the whole plan"],
+    lifts: ["Upper body (Wed)", "Lower body (Fri)"],
     purpose:
-      "Get your legs used to running again after cross-training. Your cardio is there from swimming - now your legs need to catch up. Don't overdo it.",
+      "You've been cruising short 2ks at 7:00+/km - the base is there, the speed is dormant. The Thursday 2K time trial tells us exactly where you are and whether 24:30 or sub-25 is the target.",
     keyPoint:
-      "Go genuinely easy on all runs. Your cardiovascular fitness is ahead of your running-specific fitness right now. Let your legs adapt.",
+      "Under 9:50 on the 2K → chase 24:30. 9:50-10:30 → sub-25 is the goal. Over 10:30 → we build and retest in week 3. No wrong answer, just data.",
   },
   {
     number: 2,
-    dates: "Apr 7 - 10",
-    theme: "Race Pace Test + Sharpening",
-    volume: "~20 km",
-    color: "border-amber-400",
-    headerBg: "bg-amber-50",
-    zone2: ["Recovery run (4 km) after race pace test"],
-    zone5: ["RACE PACE TEST: 5km @ 6:00/km - the key workout", "Tempo intervals: 4x1km @ 5:50-6:00/km"],
-    lifts: ["Upper body (Wed)", "Lower body (Fri) - last hard leg day"],
+    dates: "Sep 1 - 13",
+    theme: "Speed Development",
+    volume: "~39 km",
+    color: "border-red-400",
+    headerBg: "bg-red-50",
+    zone2: ["Zone 2 runs (5 km Thu)", "Partner easy runs (2-3 km Sat)", "Long runs building 6 → 7 km (Sun)"],
+    zone5: ["8x400m @ 4:45-4:55/km (Tue Sep 1)", "VO2max: 5x800m @ 4:50-5:00/km (Tue Sep 8)"],
+    lifts: ["Upper body (Mon)", "Lower body (Wed, day after speed)"],
     purpose:
-      "The race pace test on Apr 7 tells you everything. If you can hold 6:00/km for 5km, sub-60 is real. The tempo intervals sharpen your ability to hold pace under fatigue.",
+      "Two weeks of pure speed - short reps first, then double the rep length at nearly the same pace. This is what moves you from 5:18/km fitness to 5:00/km fitness. The Sunday long runs quietly build the floor underneath.",
     keyPoint:
-      "The Apr 7 test is everything. Lock in 6:00/km - don't start at 5:45. If it feels controlled but hard, you're ready. If you can't hold it past 3km, adjust to a 61-62 min target.",
+      "Hit the interval paces, don't beat them. Going 4:30 on rep one and dying by rep five trains nothing. Even splits win.",
   },
   {
     number: 3,
-    dates: "Apr 11 - 18",
-    theme: "Cottage + Taper + Race",
-    volume: "~15 km + Race",
+    dates: "Sep 14 - 27",
+    theme: "Race Pace + Sharpen",
+    volume: "~37 km",
+    color: "border-amber-400",
+    headerBg: "bg-amber-50",
+    zone2: ["Zone 2 runs (5-6 km Thu)", "Partner easy runs (Sat)", "Long run 7 km (Sep 20), easy 5 km (Sep 27)"],
+    zone5: ["RACE PACE TEST: 3km @ 5:00/km (Tue Sep 15) - the key workout", "The April Special: 4x1km @ 4:50-5:00/km (Tue Sep 22)"],
+    lifts: ["Upper body (Mon)", "Lower body (Wed) - Sep 23 is the last hard leg day"],
+    purpose:
+      "The Sep 15 test is the same decision-point formula that worked for the 10K: hold 3km at goal pace and you know sub-25 is real. Then the 4x1km session - the workout that got you to Foxtrail fitness - locks in goal pace under fatigue.",
+    keyPoint:
+      "Sep 15 test: controlled-but-hard → sub-25 locked. Felt easy → target 24:15-24:30. Couldn't hold past 2km → race for 25:30 with a negative split and let race-day adrenaline do the rest (it was worth minutes in April).",
+  },
+  {
+    number: 4,
+    dates: "Sep 28 - Oct 4",
+    theme: "Taper + Race",
+    volume: "~10 km + Race",
     color: "border-purple-600",
     headerBg: "bg-gradient-to-r from-purple-50 to-pink-50",
-    zone2: ["Easy + strides (5 km Mon, 4 km Wed)", "Shakeout (3 km Fri)", "Swim/bike on rest days - zero impact, keeps cardio up"],
-    zone5: ["RACE DAY - April 18!"],
-    lifts: ["None - fresh legs only"],
+    zone2: ["Easy + strides (4 km Tue)", "Shakeout 2 km Sat - perfect partner run"],
+    zone5: ["Sharpener: 3x400m @ race pace, full recovery (Thu)", "RACE DAY - Sunday October 4!"],
+    lifts: ["Light upper body Monday only - no legs all week"],
     purpose:
-      "Cottage weekend swim/bike keeps blood flowing without leg stress. Then short easy runs to stay sharp. Swimming and easy biking are perfect taper activities - zero impact, maintains cardio.",
+      "Volume drops hard so the speed you built can surface. The Thursday 3x400 at race pace should feel automatic - that's the point. By Sunday your legs are springs.",
     keyPoint:
-      "You might feel restless or sluggish during the taper - that's normal. Swim or bike to scratch the itch. Skip all lifting this phase. Trust the process.",
+      "You might feel sluggish mid-week - that's the taper working, same as April. Trust it. Lay out race gear Saturday night.",
   },
 ];
 
@@ -154,7 +169,7 @@ export default function GamePlanPage() {
       {/* Hero */}
       <div className="bg-gradient-to-br from-blue-600 to-purple-700 text-white rounded-2xl p-6">
         <h1 className="text-2xl font-bold mb-1">Game Plan</h1>
-        <p className="text-blue-100 text-sm mb-4">Revised 15-Day Plan - Mississauga 10K - April 18, 2026</p>
+        <p className="text-blue-100 text-sm mb-4">40-Day Plan - Oakville 5K - Sunday October 4, 2026</p>
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>
             <div className="text-2xl font-bold">{CURRENT_PACE}</div>
@@ -181,47 +196,47 @@ export default function GamePlanPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm">
-            This is a <span className="font-semibold">15-day crash course</span> - not a full
-            training block. Your cardiovascular fitness from swimming and cross-training is intact.
-            The plan focuses on three things:
+            This is a <span className="font-semibold">6-week block built on what worked in April</span>:
+            you went from a 7:22/km baseline to racing 5:31/km at Foxtrail in six weeks. A 5K needs
+            less volume and more speed than the 10K did, so the plan is 3-4 runs a week around your lifts:
           </p>
 
           <div className="grid gap-3 sm:grid-cols-3">
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="flex items-center gap-2 font-semibold text-green-800 mb-2">
-                <Heart className="h-4 w-4" />
-                Reintroduce Running
-              </div>
-              <p className="text-sm text-green-900/80">
-                Get your legs back under you with easy volume. Your cardio is ahead of your
-                running-specific fitness - let your legs catch up safely.
-              </p>
-            </div>
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
               <div className="flex items-center gap-2 font-semibold text-red-800 mb-2">
                 <Zap className="h-4 w-4" />
-                Test Race Pace
+                Tuesday Speed
               </div>
               <p className="text-sm text-red-900/80">
-                The Apr 7 race pace test is the key workout. 5km at 6:00/km tells you if sub-60
-                is realistic. Tempo intervals sharpen your ability to hold pace under fatigue.
+                One hard session a week: 400s, then 800s, then a race pace test, then the 4x1km
+                April Special. This is what moves you from 26:30 fitness to sub-25.
+              </p>
+            </div>
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 font-semibold text-green-800 mb-2">
+                <Heart className="h-4 w-4" />
+                Zone 2 Everything Else
+              </div>
+              <p className="text-sm text-green-900/80">
+                Thursday and Sunday stay genuinely easy (6:30-7:15/km), and the partner run is
+                real recovery volume - conversational pace, no sneaking it down.
               </p>
             </div>
             <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
               <div className="flex items-center gap-2 font-semibold text-indigo-800 mb-2">
                 <Target className="h-4 w-4" />
-                Lifting + Taper
+                Decision Points
               </div>
               <p className="text-sm text-indigo-900/80">
-                Front-load 4 lifting sessions (2 upper, 2 lower) in the first 8 days.
-                No lifting after Apr 10 - fresh legs for race week.
+                The Aug 27 benchmark and Sep 15 race pace test decide the target: 24:30 stretch,
+                sub-25 goal, or 25:30 fallback. Same formula that called your 10K correctly.
               </p>
             </div>
           </div>
 
           <p className="text-sm text-muted-foreground">
-            The cottage weekend (Apr 11-12) acts as a natural mini-deload before race week.
-            Trust the taper - you might feel sluggish, but your body is storing energy.
+            Lower body lifts land the day after speed work - hard days hard, easy days easy.
+            Weekend runs are moveable; the Tuesday session is the one that can&apos;t be skipped.
           </p>
         </CardContent>
       </Card>
@@ -251,10 +266,10 @@ export default function GamePlanPage() {
                 1
               </div>
               <div>
-                <p className="text-sm font-medium">KM 1-2: Conservative Start</p>
+                <p className="text-sm font-medium">KM 1: Conservative Start</p>
                 <p className="text-xs text-muted-foreground">
-                  Run 6:10/km. Resist the urge to go out fast with the crowd. Settle in and find
-                  your breathing rhythm.
+                  Run 5:03/km. April taught us the adrenaline trap - going out fast feels free
+                  and costs you the last kilometre. Settle in and find your rhythm.
                 </p>
               </div>
             </div>
@@ -263,10 +278,10 @@ export default function GamePlanPage() {
                 2
               </div>
               <div>
-                <p className="text-sm font-medium">KM 3-7: Settle Into Goal Pace</p>
+                <p className="text-sm font-medium">KM 2-4: Lock Into Goal Pace</p>
                 <p className="text-xs text-muted-foreground">
-                  Lock into 6:00/km. This is your cruise pace. Stay relaxed, focus on form, and
-                  let the kilometres tick by.
+                  Hold 5:00/km. This is the pace you rehearsed in the test and the 4x1km session.
+                  Stay relaxed, focus on form, tick them off one at a time.
                 </p>
               </div>
             </div>
@@ -275,16 +290,16 @@ export default function GamePlanPage() {
                 3
               </div>
               <div>
-                <p className="text-sm font-medium">KM 8-10: Push If You Can</p>
+                <p className="text-sm font-medium">KM 5: Empty the Tank</p>
                 <p className="text-xs text-muted-foreground">
-                  If you feel good at KM 7, gradually pick it up to 5:50/km. The finish line is
-                  close - empty the tank over the last kilometre.
+                  One kilometre left - push to 4:45-4:50/km. In a 5K there is no saving anything.
+                  If you cross the line thinking you had more, you paced it wrong.
                 </p>
               </div>
             </div>
           </div>
           <p className="text-xs text-muted-foreground text-center pt-2">
-            Target splits: 12:20 (2K) → 30:00 (5K) → 42:00 (7K) → 59:00 (finish)
+            Target splits: 5:03 (1K) → 10:03 (2K) → 15:03 (3K) → 20:03 (4K) → 24:50 (finish)
           </p>
         </CardContent>
       </Card>
