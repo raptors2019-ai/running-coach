@@ -70,13 +70,21 @@ const TRAINING_PLAN: WorkoutData[] = [
 
 export const reseedTrainingPlan = mutation({
   handler: async (ctx) => {
-    // Delete all existing workouts and plans
+    // Completed workouts (April 10K block, Foxtrail race, synced Strava runs)
+    // and their journal entries are kept as history. They stay attached to
+    // their old planId, so week views — which scope by the current plan's id —
+    // only show the new plan, while date-based views still show everything.
     const workouts = await ctx.db.query("workouts").collect();
-    for (const w of workouts) await ctx.db.delete(w._id);
+    const journals = await ctx.db.query("journalEntries").collect();
+    for (const w of workouts) {
+      if (w.completed) continue;
+      for (const j of journals) {
+        if (j.workoutId === w._id) await ctx.db.delete(j._id);
+      }
+      await ctx.db.delete(w._id);
+    }
     const plans = await ctx.db.query("trainingPlan").collect();
     for (const p of plans) await ctx.db.delete(p._id);
-    const journals = await ctx.db.query("journalEntries").collect();
-    for (const j of journals) await ctx.db.delete(j._id);
 
     // Create fresh plan
     const planId = await ctx.db.insert("trainingPlan", {
@@ -88,11 +96,17 @@ export const reseedTrainingPlan = mutation({
       goalPace: "5:00",
     });
 
+    // Skip dates that already have a completed workout so re-running
+    // mid-plan doesn't create duplicates alongside finished sessions.
+    const completedDates = new Set(workouts.filter((w) => w.completed).map((w) => w.date));
+    let inserted = 0;
     for (const workout of TRAINING_PLAN) {
+      if (completedDates.has(workout.date)) continue;
       await ctx.db.insert("workouts", { planId, ...workout, completed: false });
+      inserted++;
     }
 
-    console.log(`Reseeded ${TRAINING_PLAN.length} workouts`);
+    console.log(`Reseeded ${inserted} workouts (kept ${completedDates.size} completed dates as history)`);
     return planId;
   },
 });

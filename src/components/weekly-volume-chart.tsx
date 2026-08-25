@@ -16,12 +16,17 @@ import {
 import { getLocalDateString } from "@/lib/pace-utils";
 
 export function WeeklyVolumeChart() {
-  const workouts = useQuery(api.workouts.getAllWorkouts);
+  const allWorkouts = useQuery(api.workouts.getAllWorkouts);
+  const plan = useQuery(api.workouts.getTrainingPlan);
 
-  if (!workouts) return null;
+  if (!allWorkouts || !plan) return null;
 
-  const weeks = [1, 2, 3, 4, 5, 6, 7];
-  const weekLabels = ["W1", "W2", "W3", "W4", "W5", "W6", "Race"];
+  // Scope to the current plan so kept history from previous race blocks
+  // (same week numbers, different planId) stays out of the bars.
+  const workouts = allWorkouts.filter((w) => w.planId === plan._id);
+
+  const weeks = [1, 2, 3, 4, 5, 6];
+  const weekLabels = ["W1", "W2", "W3", "W4", "W5", "Race Wk"];
 
   const data = weeks.map((week, i) => {
     const weekWorkouts = workouts.filter((w) => w.weekNumber === week);
