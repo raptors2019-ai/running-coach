@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CountdownBadge } from "@/components/countdown-badge";
+import { StalePlanBanner } from "@/components/stale-plan-banner";
 import { WeatherWidget } from "@/components/weather-widget";
 import { WeekPreview } from "@/components/week-preview";
 import { UpcomingDays } from "@/components/upcoming-days";
@@ -56,6 +57,8 @@ export default function HomePage() {
         </div>
         <CountdownBadge />
       </div>
+
+      <StalePlanBanner />
 
       {workouts && <WeekPreview workouts={workouts} />}
 

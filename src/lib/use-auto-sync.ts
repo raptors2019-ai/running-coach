@@ -20,7 +20,7 @@ export function useAutoStravaSync() {
 
     if (shouldSync) {
       hasFired.current = true;
-      syncAndAutoMatch().catch(() => {
+      syncAndAutoMatch({}).catch(() => {
         // Fire-and-forget — errors are non-critical
       });
     }

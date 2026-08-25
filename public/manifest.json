@@ -1,7 +1,7 @@
 {
   "name": "Running Coach",
   "short_name": "RunCoach",
-  "description": "Personal 10K training coach",
+  "description": "Personal 5K training coach",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
