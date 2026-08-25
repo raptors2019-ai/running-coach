@@ -5,7 +5,7 @@ import { api } from "../../../convex/_generated/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { PACE_ZONES, GOAL_PACE, CURRENT_PACE, RACE_DATE } from "@/lib/constants";
+import { PACE_ZONES, GOAL_PACE, CURRENT_PACE, RACE_DATE, RACE_LOCATION, RACE_COORDS } from "@/lib/constants";
 import { Link2, RefreshCw, Database, Loader2 } from "lucide-react";
 import { useState } from "react";
 
@@ -178,7 +178,7 @@ export default function SettingsPage() {
             Refresh Weather
           </Button>
           <p className="text-xs text-muted-foreground mt-2">
-            Mississauga, ON (43.589, -79.644)
+            {RACE_LOCATION} ({RACE_COORDS.lat}, {RACE_COORDS.lon})
           </p>
         </CardContent>
       </Card>

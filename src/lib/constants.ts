@@ -1,22 +1,24 @@
 import { PaceZone } from "./types";
 
-export const RACE_DATE = "2026-04-18";
-export const PLAN_START_DATE = "2026-04-03";
-export const RACE_DISTANCE_KM = 10;
-export const GOAL_TIME_MINUTES = 60;
-export const GOAL_PACE = "6:00"; // min/km
-export const CURRENT_PACE = "7:25"; // min/km (relaxed)
+export const RACE_DATE = "2026-10-04";
+export const PLAN_START_DATE = "2026-08-25";
+export const RACE_DISTANCE_KM = 5;
+export const GOAL_TIME_MINUTES = 25;
+export const GOAL_PACE = "5:00"; // min/km
+export const CURRENT_PACE = "7:00"; // min/km (relaxed)
+export const RACE_NAME = "Oakville 5K";
+export const RACE_LOCATION = "Coronation Park, Oakville, ON";
 
-export const MISSISSAUGA_COORDS = {
-  lat: 43.589,
-  lon: -79.644,
+export const RACE_COORDS = {
+  lat: 43.431,
+  lon: -79.707,
 };
 
 export const PACE_ZONES: PaceZone[] = [
-  { name: "Easy", minPace: "7:00", maxPace: "7:30", color: "bg-green-500" },
-  { name: "Long Run", minPace: "6:30", maxPace: "7:15", color: "bg-blue-500" },
-  { name: "Tempo", minPace: "5:50", maxPace: "6:10", color: "bg-yellow-500" },
-  { name: "Interval", minPace: "5:15", maxPace: "5:40", color: "bg-red-500" },
+  { name: "Easy", minPace: "6:45", maxPace: "7:15", color: "bg-green-500" },
+  { name: "Long Run", minPace: "6:30", maxPace: "7:00", color: "bg-blue-500" },
+  { name: "Tempo", minPace: "4:55", maxPace: "5:10", color: "bg-yellow-500" },
+  { name: "Interval", minPace: "4:35", maxPace: "4:55", color: "bg-red-500" },
   { name: "Recovery", minPace: "7:15", maxPace: "7:45", color: "bg-emerald-400" },
 ];
 
@@ -59,7 +61,10 @@ export function isNonRunningType(type: string): boolean {
 export const RUNNING_TYPES = new Set(["easy", "tempo", "intervals", "long", "race", "shakeout", "race_pace"]);
 
 export const MIN_RUNS_PER_WEEK: Record<number, number> = {
-  1: 3,
-  2: 2,
-  3: 3,
+  1: 4,
+  2: 4,
+  3: 4,
+  4: 4,
+  5: 4,
+  6: 3,
 };

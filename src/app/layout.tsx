@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Running Coach",
-  description: "Personal 10K training coach - Sub 60 goal",
+  description: "Personal 5K training coach - Sub 25 goal",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

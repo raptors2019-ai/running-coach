@@ -47,16 +47,20 @@ export function riegelPrediction(
   return knownTimeSeconds * Math.pow(targetDistanceKm / knownDistanceKm, 1.06);
 }
 
-/** Predict 10K time from a recent run */
-export function predict10KTime(distanceKm: number, durationSeconds: number): {
+/** Predict race time from a recent run */
+export function predictRaceTime(
+  distanceKm: number,
+  durationSeconds: number,
+  raceDistanceKm: number
+): {
   predictedSeconds: number;
   predictedPace: string;
   formattedTime: string;
 } {
-  const predictedSeconds = riegelPrediction(distanceKm, durationSeconds, 10);
+  const predictedSeconds = riegelPrediction(distanceKm, durationSeconds, raceDistanceKm);
   return {
     predictedSeconds,
-    predictedPace: calculatePace(10, predictedSeconds),
+    predictedPace: calculatePace(raceDistanceKm, predictedSeconds),
     formattedTime: formatDuration(predictedSeconds),
   };
 }

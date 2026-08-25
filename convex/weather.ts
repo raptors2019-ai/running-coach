@@ -89,8 +89,8 @@ export const fetchForecast = action({
       return null;
     }
 
-    const lat = 43.589;
-    const lon = -79.644;
+    const lat = 43.431;
+    const lon = -79.707;
     const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`;
 
     const response = await fetch(url);
@@ -186,8 +186,8 @@ export const fetchWeather = action({
       return null;
     }
 
-    const lat = 43.589;
-    const lon = -79.644;
+    const lat = 43.431;
+    const lon = -79.707;
     const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`;
 
     const response = await fetch(url);

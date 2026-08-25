@@ -4,8 +4,8 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { predict10KTime, paceToSeconds } from "@/lib/pace-utils";
-import { GOAL_TIME_MINUTES } from "@/lib/constants";
+import { predictRaceTime, paceToSeconds } from "@/lib/pace-utils";
+import { CURRENT_PACE, GOAL_PACE, GOAL_TIME_MINUTES, RACE_DISTANCE_KM } from "@/lib/constants";
 import { Target, TrendingDown } from "lucide-react";
 
 export function RacePrediction() {
@@ -61,15 +61,16 @@ export function RacePrediction() {
 
   // Use the most recent qualifying run
   const bestRun = runsWithData[0];
-  const prediction = predict10KTime(
+  const prediction = predictRaceTime(
     bestRun.actualDistance!,
-    bestRun.actualDuration!
+    bestRun.actualDuration!,
+    RACE_DISTANCE_KM
   );
 
   const goalSeconds = GOAL_TIME_MINUTES * 60;
-  const startingPaceSeconds = paceToSeconds("7:25");
+  const startingPaceSeconds = paceToSeconds(CURRENT_PACE);
   const predictedPaceSeconds = paceToSeconds(prediction.predictedPace);
-  const goalPaceSeconds = paceToSeconds("6:00");
+  const goalPaceSeconds = paceToSeconds(GOAL_PACE);
 
   // Progress from starting pace to goal pace (lower is better)
   const totalImprovement = startingPaceSeconds - goalPaceSeconds;
@@ -97,14 +98,14 @@ export function RacePrediction() {
             {prediction.formattedTime}
           </div>
           <div className="text-sm text-muted-foreground">
-            Predicted 10K time ({prediction.predictedPace}/km)
+            Predicted {RACE_DISTANCE_KM}K time ({prediction.predictedPace}/km)
           </div>
         </div>
 
         <div>
           <div className="flex justify-between text-xs text-muted-foreground mb-1">
-            <span>7:25/km (start)</span>
-            <span>6:00/km (goal)</span>
+            <span>{CURRENT_PACE}/km (start)</span>
+            <span>{GOAL_PACE}/km (goal)</span>
           </div>
           <Progress value={progressPercent} className="h-2" />
         </div>
@@ -120,7 +121,7 @@ export function RacePrediction() {
 
         {onTrack ? (
           <div className="text-xs text-green-600 bg-green-50 rounded p-2">
-            On track for sub-60! Keep it up.
+            On track for sub-{GOAL_TIME_MINUTES}! Keep it up.
           </div>
         ) : (
           <div className="text-xs text-amber-600 bg-amber-50 rounded p-2">
