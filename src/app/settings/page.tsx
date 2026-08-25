@@ -5,8 +5,8 @@ import { api } from "../../../convex/_generated/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { PACE_ZONES, GOAL_PACE, CURRENT_PACE, RACE_DATE, RACE_LOCATION, RACE_COORDS } from "@/lib/constants";
-import { Link2, RefreshCw, Database, Loader2 } from "lucide-react";
+import { PACE_ZONES, GOAL_PACE, CURRENT_PACE, RACE_LOCATION, RACE_COORDS } from "@/lib/constants";
+import { Link2, RefreshCw, Database, Loader2, History } from "lucide-react";
 import { useState } from "react";
 
 export default function SettingsPage() {
@@ -17,6 +17,7 @@ export default function SettingsPage() {
   const fetchWeather = useAction(api.weather.fetchWeather);
 
   const [syncing, setSyncing] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [fetchingWeather, setFetchingWeather] = useState(false);
 
@@ -43,12 +44,27 @@ export default function SettingsPage() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const result = await syncStrava();
+      const result = await syncStrava({});
       alert(`Synced ${result.synced} activities. ${result.autoCompleted} auto-completed, ${result.newActivitiesCreated} new activities created, ${result.alreadyDone} already done.`);
     } catch {
       alert("Failed to sync. Check Strava connection.");
     } finally {
       setSyncing(false);
+    }
+  };
+
+  // Deep sync: the routine sync only looks back 30 days, so past race blocks
+  // can't re-import themselves. This pulls ~8 months to rebuild history after
+  // a reseed. Already-synced activities are skipped, so it's safe to re-run.
+  const handleBackfill = async () => {
+    setBackfilling(true);
+    try {
+      const result = await syncStrava({ lookbackDays: 240 });
+      alert(`Backfill complete. Found ${result.synced} activities: ${result.newActivitiesCreated} restored, ${result.autoCompleted} matched to plan, ${result.alreadyDone} already present.`);
+    } catch {
+      alert("Backfill failed. Check Strava connection.");
+    } finally {
+      setBackfilling(false);
     }
   };
 
@@ -79,7 +95,7 @@ export default function SettingsPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Race Date</span>
-                <span>{RACE_DATE}</span>
+                <span>{plan.raceDate}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Current Pace</span>
@@ -148,6 +164,24 @@ export default function SettingsPage() {
                 )}
                 Sync Activities
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleBackfill}
+                disabled={backfilling}
+                className="ml-2"
+              >
+                {backfilling ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <History className="h-4 w-4 mr-1" />
+                )}
+                Backfill History
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Routine sync covers the last 30 days. Backfill pulls ~8 months to
+                restore past training blocks.
+              </p>
             </>
           ) : (
             <Button onClick={handleStravaConnect}>

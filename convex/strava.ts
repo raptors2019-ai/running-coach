@@ -74,7 +74,12 @@ export interface StravaActivity {
   avgHeartRate?: number;
 }
 
-async function fetchStravaActivities(ctx: ActionCtx): Promise<StravaActivity[]> {
+const DEFAULT_LOOKBACK_DAYS = 30;
+
+async function fetchStravaActivities(
+  ctx: ActionCtx,
+  lookbackDays: number = DEFAULT_LOOKBACK_DAYS
+): Promise<StravaActivity[]> {
   const auth = await ctx.runQuery(internal.strava.getStravaAuthInternal);
   if (!auth) {
     throw new Error("Not connected to Strava");
@@ -112,9 +117,12 @@ async function fetchStravaActivities(ctx: ActionCtx): Promise<StravaActivity[]> 
     });
   }
 
-  const after = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
+  const after = Math.floor(Date.now() / 1000) - lookbackDays * 24 * 60 * 60;
+  // Strava caps per_page at 200. A deep backfill needs the bigger page to
+  // reach months-old activities in a single request.
+  const perPage = lookbackDays > DEFAULT_LOOKBACK_DAYS ? 200 : 30;
   const response: Response = await fetch(
-    `https://www.strava.com/api/v3/athlete/activities?after=${after}&per_page=30`,
+    `https://www.strava.com/api/v3/athlete/activities?after=${after}&per_page=${perPage}`,
     {
       headers: { Authorization: `Bearer ${accessToken}` },
     }
@@ -146,14 +154,16 @@ async function fetchStravaActivities(ctx: ActionCtx): Promise<StravaActivity[]> 
 }
 
 export const syncStravaActivities = action({
-  handler: async (ctx): Promise<StravaActivity[]> => {
-    return await fetchStravaActivities(ctx);
+  args: { lookbackDays: v.optional(v.number()) },
+  handler: async (ctx, args): Promise<StravaActivity[]> => {
+    return await fetchStravaActivities(ctx, args.lookbackDays);
   },
 });
 
 export const syncAndAutoMatch = action({
-  handler: async (ctx): Promise<{ synced: number; autoCompleted: number; alreadyDone: number; newActivitiesCreated: number }> => {
-    const activities = await fetchStravaActivities(ctx);
+  args: { lookbackDays: v.optional(v.number()) },
+  handler: async (ctx, args): Promise<{ synced: number; autoCompleted: number; alreadyDone: number; newActivitiesCreated: number }> => {
+    const activities = await fetchStravaActivities(ctx, args.lookbackDays);
 
     const mappedActivities = activities.map((activity) => {
       const mappedType = mapStravaTypeToWorkoutType(activity.type, activity.name);
