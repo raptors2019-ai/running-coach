@@ -19,6 +19,8 @@ Background you know: In April they raced the Foxtrail 10.3K in 56:50 (5:31/km) o
 
 Your style: knowledgeable but human. Direct, encouraging, data-driven. Reference actual numbers from their data. Keep responses short — a few sentences to a short paragraph for chat; briefings can run a bit longer. Plain text only, no markdown formatting, no bullet symbols.
 
+Think week-first: judge progress against THIS WEEK SO FAR and the WEEKLY REVIEW HISTORY (the trend across weeks), not just yesterday in isolation. The week stats are computed by the app — quote them as ground truth. Rest days and lift-only days are part of the plan, not gaps: they need no run commentary. A missed or unlogged run gets at most one neutral sentence, never speculation about what might have happened and never repeated across briefings. If yesterday has nothing worth saying, skip it entirely and lead with the week and today's focus — a short briefing is a good briefing.
+
 Strava data quirk: the athlete often records one session as several Strava activities (warmup, hard effort, cooldown logged separately). The sync attaches the activity whose pace best fits the planned target to the planned workout, and labels the leftovers by role — rows titled 'Warmup — ...' or 'Cooldown — ...' are segments of that day's session, so read the planned row as the main effort and the labeled rows as its bookends. If a day still looks mismatched (a time trial wearing a jogging pace, segments labeled wrong), call rematch_date for that day, then re-check with get_workouts before drawing conclusions.
 
 You can edit the plan with your tools when the athlete asks or when circumstances clearly require it (travel, illness, fatigue, missed sessions). Rules: never edit completed workouts (history is immutable — rematch_date is the one exception, since it rebuilds a day from Strava rather than rewriting it); protect the Tuesday quality sessions and the two checkpoint workouts — move them rather than drop them; easy volume is the first thing to cut; never stack hard days back to back; nothing hard in the final 3 days before the race. After making changes, summarize exactly what you changed. Dates are YYYY-MM-DD. If a request is ambiguous, make the sensible coaching call and say what you assumed.`;
@@ -107,6 +109,8 @@ type CoachContext = {
   journals: unknown[];
   recentMessages: { role: "user" | "assistant"; content: string }[];
   latestBriefing: { date: string; content: string } | null;
+  currentWeek: { weekStart: string; stats: unknown };
+  weeklyReviews: { weekStart: string; stats: unknown; review: string }[];
 };
 
 function contextBlock(context: CoachContext): string {
@@ -117,6 +121,10 @@ function contextBlock(context: CoachContext): string {
     `CURRENT TRAINING DATA (today: ${context.today}${daysToRace !== null ? `, ${daysToRace} days to race` : ""})`,
     `Plan: ${JSON.stringify(context.plan)}`,
     `Workouts last 14 days + upcoming: ${JSON.stringify(context.workouts)}`,
+    `THIS WEEK SO FAR (Mon-Sun, app-computed — treat as ground truth): ${JSON.stringify(context.currentWeek)}`,
+    context.weeklyReviews.length > 0
+      ? `WEEKLY REVIEW HISTORY (newest first): ${JSON.stringify(context.weeklyReviews)}`
+      : "No weekly reviews yet — this is the first week.",
     `Recent journal entries: ${JSON.stringify(context.journals)}`,
     context.latestBriefing ? `Latest briefing (${context.latestBriefing.date}): ${context.latestBriefing.content}` : "No briefings yet.",
   ].join("\n");
@@ -317,7 +325,7 @@ export const generateBriefing = internalAction({
         {
           role: "user",
           content:
-            "Write this morning's briefing. Cover: how yesterday went (or the last workout if yesterday was rest), how the week is tracking against the plan, anything in the data worth flagging (pace drift, missed sessions, fatigue signals from journal mood), and what today's focus is. If recent chat mentioned schedule constraints, account for them. 4-8 sentences, plain text, written directly to the athlete.",
+            "Write this morning's briefing. Lead with what matters most today. If yesterday had a run, react to its actual numbers; if yesterday was rest, a lift, or simply has no data, don't comment on it — go straight to the week. Use THIS WEEK SO FAR and the weekly review history for the holistic view (volume and pace trend across weeks, not just days), then set today's focus. If recent chat mentioned schedule constraints, account for them. 2-8 sentences depending on how much actually happened — short is fine. Plain text, written directly to the athlete.",
         },
       ],
     });
@@ -327,6 +335,70 @@ export const generateBriefing = internalAction({
     if (content) {
       await ctx.runMutation(internal.coach.upsertBriefing, { date: context.today, content });
     }
+  },
+});
+
+export const generateWeeklyReview = internalAction({
+  handler: async (ctx) => {
+    try {
+      await ctx.runAction(api.strava.syncAndAutoMatch, {});
+    } catch {
+      // Best effort — review what we have
+    }
+
+    const input: {
+      today: string;
+      weekStart: string;
+      stats: {
+        runsPlanned: number;
+        runsCompleted: number;
+        plannedKm: number;
+        actualKm: number;
+        qualityTitle?: string;
+        qualityCompleted: boolean;
+        qualityPace?: string;
+        longestRunKm: number;
+      };
+      previousReviews: { weekStart: string; stats: unknown; review: string }[];
+    } = await ctx.runQuery(internal.coach.getWeekReviewInput);
+
+    const client = new Anthropic();
+    const response = await createMessage(client, {
+      model: MODEL,
+      max_tokens: 2048,
+      system: [{ type: "text", text: SYSTEM_PROMPT }],
+      messages: [
+        {
+          role: "user",
+          content: [
+            `Write the weekly review for the training week starting ${input.weekStart} (Mon-Sun). Today is ${input.today}.`,
+            `This week's app-computed stats (ground truth): ${JSON.stringify(input.stats)}`,
+            input.previousReviews.length > 0
+              ? `Previous weekly reviews, newest first: ${JSON.stringify(input.previousReviews)}`
+              : "This is the first weekly review of the block.",
+            "Cover: volume and completion vs plan, how the quality session went, the pace/fitness trend versus previous weeks, and the single most important thing for next week. Don't itemize every day. 4-8 sentences, plain text, written directly to the athlete.",
+          ].join("\n"),
+        },
+      ],
+    });
+
+    if (response.stop_reason === "refusal") return;
+    const review = textOf(response.content);
+    if (review) {
+      await ctx.runMutation(internal.coach.upsertWeeklyReview, {
+        weekStart: input.weekStart,
+        stats: input.stats,
+        review,
+      });
+    }
+  },
+});
+
+export const generateWeeklyReviewNow = action({
+  args: { passcode: v.string() },
+  handler: async (ctx, args) => {
+    checkPasscode(args.passcode);
+    await ctx.runAction(internal.coachActions.generateWeeklyReview, {});
   },
 });
 
