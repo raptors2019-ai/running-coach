@@ -19,7 +19,9 @@ Background you know: In April they raced the Foxtrail 10.3K in 56:50 (5:31/km) o
 
 Your style: knowledgeable but human. Direct, encouraging, data-driven. Reference actual numbers from their data. Keep responses short — a few sentences to a short paragraph for chat; briefings can run a bit longer. Plain text only, no markdown formatting, no bullet symbols.
 
-You can edit the plan with your tools when the athlete asks or when circumstances clearly require it (travel, illness, fatigue, missed sessions). Rules: never edit completed workouts (history is immutable); protect the Tuesday quality sessions and the two checkpoint workouts — move them rather than drop them; easy volume is the first thing to cut; never stack hard days back to back; nothing hard in the final 3 days before the race. After making changes, summarize exactly what you changed. Dates are YYYY-MM-DD. If a request is ambiguous, make the sensible coaching call and say what you assumed.`;
+Strava data quirk: the athlete often records one session as several Strava activities (warmup, hard effort, cooldown logged separately). The sync attaches one activity to the planned workout; the rest appear as unplanned rows on the same date. If a day's numbers look wrong for what was planned — a time trial wearing a jogging pace while a fast unplanned run sits beside it — the wrong activity was auto-matched: call rematch_date for that day, then re-check with get_workouts before drawing conclusions.
+
+You can edit the plan with your tools when the athlete asks or when circumstances clearly require it (travel, illness, fatigue, missed sessions). Rules: never edit completed workouts (history is immutable — rematch_date is the one exception, since it rebuilds a day from Strava rather than rewriting it); protect the Tuesday quality sessions and the two checkpoint workouts — move them rather than drop them; easy volume is the first thing to cut; never stack hard days back to back; nothing hard in the final 3 days before the race. After making changes, summarize exactly what you changed. Dates are YYYY-MM-DD. If a request is ambiguous, make the sensible coaching call and say what you assumed.`;
 
 const TOOLS: Anthropic.Beta.BetaTool[] = [
   {
@@ -65,6 +67,15 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
   {
     name: "set_rest_day",
     description: "Replace the planned workout on a date with a rest day.",
+    input_schema: {
+      type: "object",
+      properties: { date: { type: "string", description: "YYYY-MM-DD" } },
+      required: ["date"],
+    },
+  },
+  {
+    name: "rematch_date",
+    description: "Re-run Strava matching for one date. Use when an auto-match looks wrong — e.g. a separately-logged warmup claimed a quality workout while the hard effort sits in an unplanned row. Clears the day's sync state and immediately re-syncs from Strava, then verify with get_workouts.",
     input_schema: {
       type: "object",
       properties: { date: { type: "string", description: "YYYY-MM-DD" } },
@@ -140,6 +151,11 @@ async function runTool(
       });
     case "set_rest_day":
       return await ctx.runMutation(internal.coach.coachSetRestDay, { date: input.date });
+    case "rematch_date": {
+      const summary = await ctx.runMutation(internal.coach.coachRematchDate, { date: input.date });
+      await ctx.runAction(api.strava.syncAndAutoMatch, {});
+      return `${summary}; re-sync complete`;
+    }
     case "add_workout":
       return await ctx.runMutation(internal.coach.coachAddWorkout, {
         date: input.date,
@@ -151,6 +167,52 @@ async function runTool(
       });
     default:
       throw new Error(`Unknown tool: ${name}`);
+  }
+}
+
+/**
+ * Anthropic errors arrive as a JSON blob inside the message. Surface the part
+ * that tells the user what to actually do about it.
+ */
+function friendlyApiError(e: unknown): Error {
+  if (e instanceof Anthropic.AuthenticationError) {
+    return new Error("Anthropic rejected the API key. Check ANTHROPIC_API_KEY in the Convex deployment (npx convex env list).");
+  }
+  if (e instanceof Anthropic.RateLimitError) {
+    return new Error("Anthropic rate limit hit — wait a moment and try again.");
+  }
+  if (e instanceof Anthropic.APIError) {
+    const detail = typeof e.message === "string" ? e.message : String(e);
+    if (/credit balance|billing|quota/i.test(detail)) {
+      return new Error("Anthropic account has no API credits. Add credits at console.anthropic.com under Billing — a Claude.ai subscription does not cover API usage.");
+    }
+    return new Error(`Anthropic API error ${e.status}: ${detail}`);
+  }
+  return e instanceof Error ? e : new Error(String(e));
+}
+
+/**
+ * Server-side refusal fallbacks are opt-in per account. If the beta isn't
+ * enabled the request 400s on the parameter itself, so retry once without it
+ * rather than failing the whole briefing.
+ */
+async function createMessage(
+  client: Anthropic,
+  params: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, "betas" | "fallbacks">
+): Promise<Anthropic.Beta.BetaMessage> {
+  try {
+    return await client.beta.messages.create({ ...params, betas: BETAS, fallbacks: "default" });
+  } catch (e) {
+    const isFallbackRejection =
+      e instanceof Anthropic.APIError &&
+      e.status === 400 &&
+      /fallback|beta/i.test(String(e.message));
+    if (!isFallbackRejection) throw friendlyApiError(e);
+    try {
+      return await client.beta.messages.create(params);
+    } catch (retryError) {
+      throw friendlyApiError(retryError);
+    }
   }
 }
 
@@ -182,11 +244,9 @@ export const sendMessage = action({
 
     let reply = "";
     for (let turn = 0; turn < 8; turn++) {
-      const response = await client.beta.messages.create({
+      const response = await createMessage(client, {
         model: MODEL,
         max_tokens: 4096,
-        betas: BETAS,
-        fallbacks: "default",
         system: [
           { type: "text", text: SYSTEM_PROMPT },
           { type: "text", text: contextBlock(context) },
@@ -246,11 +306,9 @@ export const generateBriefing = internalAction({
     const context: CoachContext = await ctx.runQuery(internal.coach.getCoachContext);
     const client = new Anthropic();
 
-    const response = await client.beta.messages.create({
+    const response = await createMessage(client, {
       model: MODEL,
       max_tokens: 2048,
-      betas: BETAS,
-      fallbacks: "default",
       system: [
         { type: "text", text: SYSTEM_PROMPT },
         { type: "text", text: contextBlock(context) },

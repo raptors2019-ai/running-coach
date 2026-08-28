@@ -1,6 +1,6 @@
 import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
-import { isRunningType, formatPaceWithUnit, typeAffinityScore, inferWeekNumber, getDayOfWeek } from "./lib/stravaMapping";
+import { isRunningType, formatPaceWithUnit, typeAffinityScore, inferWeekNumber, getDayOfWeek, parseTargetPaceSeconds } from "./lib/stravaMapping";
 
 export const getTrainingPlan = query({
   handler: async (ctx) => {
@@ -238,12 +238,27 @@ export const autoCompleteFromActivities = internalMutation({
       let bestMatchIdx = -1;
 
       if (plannedWorkout) {
-        // Score each activity against the planned workout type
+        // Score each activity against the planned workout type. Sessions are
+        // often logged as several activities (warmup / hard effort / cooldown
+        // recorded separately), which tie on type affinity — break ties by
+        // pace closest to the planned target so the warmup doesn't claim a
+        // time trial. Without a target pace, prefer the longest activity.
         let bestScore = -1;
+        let bestTiebreak = Infinity;
+        const targetSecs = parseTargetPaceSeconds(plannedWorkout.targetPace);
         for (let i = 0; i < unmatched.length; i++) {
-          const score = typeAffinityScore(plannedWorkout.type, unmatched[i].mappedType);
-          if (score > bestScore) {
+          const a = unmatched[i];
+          const score = typeAffinityScore(plannedWorkout.type, a.mappedType);
+          const paceSecs = a.actualDistance > 0 ? a.actualDuration / a.actualDistance : null;
+          let tiebreak: number;
+          if (targetSecs !== null) {
+            tiebreak = paceSecs !== null ? Math.abs(paceSecs - targetSecs) : Number.MAX_SAFE_INTEGER;
+          } else {
+            tiebreak = -a.actualDistance;
+          }
+          if (score > bestScore || (score === bestScore && tiebreak < bestTiebreak)) {
             bestScore = score;
+            bestTiebreak = tiebreak;
             bestMatchIdx = i;
           }
         }
