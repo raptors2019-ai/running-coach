@@ -9,6 +9,9 @@
  */
 
 import type * as backfill from "../backfill.js";
+import type * as coach from "../coach.js";
+import type * as coachActions from "../coachActions.js";
+import type * as crons from "../crons.js";
 import type * as journal from "../journal.js";
 import type * as lib_stravaMapping from "../lib/stravaMapping.js";
 import type * as lib_weatherOptimizer from "../lib/weatherOptimizer.js";
@@ -26,6 +29,9 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   backfill: typeof backfill;
+  coach: typeof coach;
+  coachActions: typeof coachActions;
+  crons: typeof crons;
   journal: typeof journal;
   "lib/stravaMapping": typeof lib_stravaMapping;
   "lib/weatherOptimizer": typeof lib_weatherOptimizer;
