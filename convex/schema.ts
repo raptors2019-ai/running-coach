@@ -68,6 +68,16 @@ export default defineSchema({
     lastSyncAt: v.optional(v.number()),
   }),
 
+  coachBriefings: defineTable({
+    date: v.string(), // YYYY-MM-DD the briefing is for
+    content: v.string(),
+  }).index("by_date", ["date"]),
+
+  coachMessages: defineTable({
+    role: v.union(v.literal("user"), v.literal("assistant")),
+    content: v.string(),
+  }),
+
   weatherCache: defineTable({
     date: v.string(),
     temperature: v.number(),
