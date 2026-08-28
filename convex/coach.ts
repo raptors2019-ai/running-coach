@@ -71,6 +71,7 @@ export const getCoachContext = internalQuery({
         targetPace: w.targetPace,
         completed: w.completed,
         actualDistance: w.actualDistance,
+        actualDuration: w.actualDuration,
         actualPace: w.actualPace,
         avgHeartRate: w.avgHeartRate,
         isUnplanned: w.isUnplanned,

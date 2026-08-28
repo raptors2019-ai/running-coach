@@ -71,6 +71,7 @@ export interface StravaActivity {
   distance: number;
   duration: number;
   date: string;
+  startTime: string; // full local timestamp — orders same-day activities
   avgHeartRate?: number;
 }
 
@@ -149,6 +150,7 @@ async function fetchStravaActivities(
     distance: Math.round((a.distance / 1000) * 100) / 100,
     duration: a.moving_time,
     date: a.start_date_local.split("T")[0],
+    startTime: a.start_date_local,
     avgHeartRate: a.average_heartrate ? Math.round(a.average_heartrate) : undefined,
   }));
 }
@@ -170,6 +172,7 @@ export const syncAndAutoMatch = action({
       const mappedTitle = workoutTitleForType(mappedType);
       return {
         date: activity.date,
+        startTime: activity.startTime,
         stravaActivityId: activity.stravaId,
         actualDistance: activity.distance,
         actualDuration: activity.duration,
