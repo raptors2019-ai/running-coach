@@ -11,6 +11,21 @@ import { getLocalDateString } from "@/lib/pace-utils";
 
 const PASSCODE_KEY = "coach_passcode";
 
+/**
+ * Convex wraps action errors with a stack trace and framework noise. Pull out
+ * the first meaningful line so the UI shows the real cause (bad key, no
+ * credits, rate limit) instead of a generic guess.
+ */
+function describeError(e: unknown): string {
+  if (!(e instanceof Error)) return String(e);
+  const cleaned = e.message
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("at ") && !l.startsWith("Called by"))
+    .join(" ");
+  return cleaned || e.message;
+}
+
 function loadPasscode(): string | null {
   try {
     return localStorage.getItem(PASSCODE_KEY);
@@ -74,7 +89,7 @@ export default function CoachPage() {
           localStorage.removeItem(PASSCODE_KEY);
         } catch {}
       } else {
-        alert("Coach didn't answer — check that ANTHROPIC_API_KEY is set in Convex, then try again.");
+        alert(`Coach didn't answer.\n\n${describeError(e)}`);
       }
     } finally {
       setSending(false);
@@ -91,7 +106,7 @@ export default function CoachPage() {
         setPasscode(null);
         setPasscodeError(true);
       } else {
-        alert("Couldn't generate the briefing — check ANTHROPIC_API_KEY in Convex.");
+        alert(`Couldn't generate the briefing.\n\n${describeError(e)}`);
       }
     } finally {
       setBriefingLoading(false);
