@@ -19,7 +19,9 @@ Background you know: In April they raced the Foxtrail 10.3K in 56:50 (5:31/km) o
 
 Your style: knowledgeable but human. Direct, encouraging, data-driven. Reference actual numbers from their data. Keep responses short — a few sentences to a short paragraph for chat; briefings can run a bit longer. Plain text only, no markdown formatting, no bullet symbols.
 
-You can edit the plan with your tools when the athlete asks or when circumstances clearly require it (travel, illness, fatigue, missed sessions). Rules: never edit completed workouts (history is immutable); protect the Tuesday quality sessions and the two checkpoint workouts — move them rather than drop them; easy volume is the first thing to cut; never stack hard days back to back; nothing hard in the final 3 days before the race. After making changes, summarize exactly what you changed. Dates are YYYY-MM-DD. If a request is ambiguous, make the sensible coaching call and say what you assumed.`;
+Strava data quirk: the athlete often records one session as several Strava activities (warmup, hard effort, cooldown logged separately). The sync attaches one activity to the planned workout; the rest appear as unplanned rows on the same date. If a day's numbers look wrong for what was planned — a time trial wearing a jogging pace while a fast unplanned run sits beside it — the wrong activity was auto-matched: call rematch_date for that day, then re-check with get_workouts before drawing conclusions.
+
+You can edit the plan with your tools when the athlete asks or when circumstances clearly require it (travel, illness, fatigue, missed sessions). Rules: never edit completed workouts (history is immutable — rematch_date is the one exception, since it rebuilds a day from Strava rather than rewriting it); protect the Tuesday quality sessions and the two checkpoint workouts — move them rather than drop them; easy volume is the first thing to cut; never stack hard days back to back; nothing hard in the final 3 days before the race. After making changes, summarize exactly what you changed. Dates are YYYY-MM-DD. If a request is ambiguous, make the sensible coaching call and say what you assumed.`;
 
 const TOOLS: Anthropic.Beta.BetaTool[] = [
   {
@@ -65,6 +67,15 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
   {
     name: "set_rest_day",
     description: "Replace the planned workout on a date with a rest day.",
+    input_schema: {
+      type: "object",
+      properties: { date: { type: "string", description: "YYYY-MM-DD" } },
+      required: ["date"],
+    },
+  },
+  {
+    name: "rematch_date",
+    description: "Re-run Strava matching for one date. Use when an auto-match looks wrong — e.g. a separately-logged warmup claimed a quality workout while the hard effort sits in an unplanned row. Clears the day's sync state and immediately re-syncs from Strava, then verify with get_workouts.",
     input_schema: {
       type: "object",
       properties: { date: { type: "string", description: "YYYY-MM-DD" } },
@@ -140,6 +151,11 @@ async function runTool(
       });
     case "set_rest_day":
       return await ctx.runMutation(internal.coach.coachSetRestDay, { date: input.date });
+    case "rematch_date": {
+      const summary = await ctx.runMutation(internal.coach.coachRematchDate, { date: input.date });
+      await ctx.runAction(api.strava.syncAndAutoMatch, {});
+      return `${summary}; re-sync complete`;
+    }
     case "add_workout":
       return await ctx.runMutation(internal.coach.coachAddWorkout, {
         date: input.date,

@@ -93,3 +93,12 @@ export function formatPaceWithUnit(distanceKm: number, durationSeconds: number):
   const secs = Math.floor(paceSeconds % 60);
   return `${mins}:${secs.toString().padStart(2, "0")}/km`;
 }
+
+/** Average of all M:SS tokens in a target pace string ("4:45-5:15" -> 300), in sec/km */
+export function parseTargetPaceSeconds(targetPace?: string): number | null {
+  if (!targetPace) return null;
+  const tokens = [...targetPace.matchAll(/(\d+):(\d{2})/g)];
+  if (tokens.length === 0) return null;
+  const secs = tokens.map((m) => parseInt(m[1]) * 60 + parseInt(m[2]));
+  return secs.reduce((a, b) => a + b, 0) / secs.length;
+}

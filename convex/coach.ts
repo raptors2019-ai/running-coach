@@ -217,3 +217,41 @@ export const coachAddWorkout = internalMutation({
     return `Added ${args.title} on ${args.date}`;
   },
 });
+
+/**
+ * Reset one day's Strava sync state so the next sync can rematch it: planned
+ * workouts revert to un-completed (restoring a sync-overwritten type), and
+ * unplanned activity rows are removed. The activities' Strava IDs disappear
+ * from the synced set, so an immediate re-sync re-imports and rematches them.
+ */
+export const coachRematchDate = internalMutation({
+  args: { date: v.string() },
+  handler: async (ctx, args) => {
+    const onDate = await ctx.db
+      .query("workouts")
+      .withIndex("by_date", (q) => q.eq("date", args.date))
+      .collect();
+    if (onDate.length === 0) throw new Error(`No workouts on ${args.date}`);
+    let cleared = 0;
+    let removed = 0;
+    for (const w of onDate) {
+      if (w.isUnplanned) {
+        await ctx.db.delete(w._id);
+        removed++;
+      } else if (w.completed || w.stravaActivityId) {
+        await ctx.db.patch(w._id, {
+          completed: false,
+          actualDistance: undefined,
+          actualDuration: undefined,
+          actualPace: undefined,
+          avgHeartRate: undefined,
+          stravaActivityId: undefined,
+          notes: undefined,
+          ...(w.originalType ? { type: w.originalType, originalType: undefined } : {}),
+        });
+        cleared++;
+      }
+    }
+    return `Reset ${cleared} planned workout(s), removed ${removed} unplanned activity row(s) on ${args.date}`;
+  },
+});
