@@ -4,6 +4,7 @@ import { action, internalAction, type ActionCtx } from "./_generated/server";
 import { internal, api } from "./_generated/api";
 import { v } from "convex/values";
 import Anthropic from "@anthropic-ai/sdk";
+import { isRunningType } from "./lib/stravaMapping";
 
 const MODEL = "claude-opus-5";
 const BETAS = ["server-side-fallback-2026-07-01"];
@@ -102,10 +103,18 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
   },
 ];
 
+type WorkoutRow = {
+  date: string;
+  type: string;
+  completed: boolean;
+  isUnplanned?: boolean;
+  originalType?: string;
+};
+
 type CoachContext = {
   today: string;
   plan: { name: string; raceDate: string; goalPace: string; startDate: string } | null;
-  workouts: unknown[];
+  workouts: (WorkoutRow & Record<string, unknown>)[];
   journals: unknown[];
   recentMessages: { role: "user" | "assistant"; content: string }[];
   latestBriefing: { date: string; content: string } | null;
@@ -303,7 +312,8 @@ export const sendMessage = action({
 });
 
 export const generateBriefing = internalAction({
-  handler: async (ctx) => {
+  args: { force: v.optional(v.boolean()) },
+  handler: async (ctx, args) => {
     // Fresh data first — sync is best-effort, the briefing still runs without it
     try {
       await ctx.runAction(api.strava.syncAndAutoMatch, {});
@@ -312,6 +322,28 @@ export const generateBriefing = internalAction({
     }
 
     const context: CoachContext = await ctx.runQuery(internal.coach.getCoachContext);
+
+    // Nothing happened, nothing coming: skip entirely. No run synced for
+    // yesterday and no run planned today means there is no briefing to write —
+    // rest days stay silent. The manual button passes force to override.
+    const isRun = (w: WorkoutRow) =>
+      isRunningType(w.type) || w.type === "run" || (w.originalType ? isRunningType(w.originalType) : false);
+    const yesterday = (() => {
+      const d = new Date(context.today + "T12:00:00");
+      d.setDate(d.getDate() - 1);
+      return d.toISOString().split("T")[0];
+    })();
+    const yesterdayHadRun = context.workouts.some(
+      (w) => w.date === yesterday && w.completed && isRun(w)
+    );
+    const todayHasPlannedRun = context.workouts.some(
+      (w) => w.date === context.today && !w.isUnplanned && isRun(w)
+    );
+    if (!args.force && !yesterdayHadRun && !todayHasPlannedRun) {
+      console.log(`Briefing skipped for ${context.today}: no run yesterday, none planned today`);
+      return;
+    }
+
     const client = new Anthropic();
 
     const response = await createMessage(client, {
@@ -406,6 +438,6 @@ export const generateBriefingNow = action({
   args: { passcode: v.string() },
   handler: async (ctx, args) => {
     checkPasscode(args.passcode);
-    await ctx.runAction(internal.coachActions.generateBriefing, {});
+    await ctx.runAction(internal.coachActions.generateBriefing, { force: true });
   },
 });
