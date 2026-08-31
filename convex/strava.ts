@@ -119,20 +119,10 @@ async function fetchStravaActivities(
   }
 
   const after = Math.floor(Date.now() / 1000) - lookbackDays * 24 * 60 * 60;
-  // Strava caps per_page at 200. A deep backfill needs the bigger page to
-  // reach months-old activities in a single request.
-  const perPage = lookbackDays > DEFAULT_LOOKBACK_DAYS ? 200 : 30;
-  const response: Response = await fetch(
-    `https://www.strava.com/api/v3/athlete/activities?after=${after}&per_page=${perPage}`,
-    {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error("Failed to fetch Strava activities");
-  }
-
+  // With `after`, Strava returns activities OLDEST first — so the window must
+  // be paginated to the end or the newest runs (the ones we care about) are
+  // silently dropped once the window holds more than one page.
+  const perPage = 200;
   const activities: Array<{
     type: string;
     id: number;
@@ -141,7 +131,23 @@ async function fetchStravaActivities(
     moving_time: number;
     start_date_local: string;
     average_heartrate?: number;
-  }> = await response.json();
+  }> = [];
+  for (let page = 1; page <= 10; page++) {
+    const response: Response = await fetch(
+      `https://www.strava.com/api/v3/athlete/activities?after=${after}&per_page=${perPage}&page=${page}`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch Strava activities");
+    }
+
+    const batch: typeof activities = await response.json();
+    activities.push(...batch);
+    if (batch.length < perPage) break;
+  }
 
   return activities.map((a) => ({
     stravaId: String(a.id),
