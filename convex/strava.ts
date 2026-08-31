@@ -123,6 +123,7 @@ async function fetchStravaActivities(
   // be paginated to the end or the newest runs (the ones we care about) are
   // silently dropped once the window holds more than one page.
   const perPage = 200;
+  const MAX_PAGES = 10;
   const activities: Array<{
     type: string;
     id: number;
@@ -132,7 +133,7 @@ async function fetchStravaActivities(
     start_date_local: string;
     average_heartrate?: number;
   }> = [];
-  for (let page = 1; page <= 10; page++) {
+  for (let page = 1; page <= MAX_PAGES; page++) {
     const response: Response = await fetch(
       `https://www.strava.com/api/v3/athlete/activities?after=${after}&per_page=${perPage}&page=${page}`,
       {
@@ -141,12 +142,19 @@ async function fetchStravaActivities(
     );
 
     if (!response.ok) {
-      throw new Error("Failed to fetch Strava activities");
+      throw new Error(
+        `Failed to fetch Strava activities (page ${page}, HTTP ${response.status}${response.status === 429 ? " — rate limited, try again in a few minutes" : ""})`
+      );
     }
 
     const batch: typeof activities = await response.json();
     activities.push(...batch);
     if (batch.length < perPage) break;
+    if (page === MAX_PAGES) {
+      console.warn(
+        `Strava fetch hit the ${MAX_PAGES}-page cap with a full page — newest activities in the ${lookbackDays}-day window may be missing`
+      );
+    }
   }
 
   return activities.map((a) => ({
