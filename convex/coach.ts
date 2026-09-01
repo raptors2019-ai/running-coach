@@ -1,10 +1,134 @@
 import { query, internalQuery, internalMutation, type QueryCtx, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
-import { inferWeekNumber, getDayOfWeek } from "./lib/stravaMapping";
+import { inferWeekNumber, getDayOfWeek, isRunningType } from "./lib/stravaMapping";
 
 function todayToronto(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Toronto" });
 }
+
+function addDays(date: string, days: number): string {
+  const d = new Date(date + "T12:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
+/** Monday of the week containing the given date (training weeks run Mon-Sun). */
+function mondayOf(date: string): string {
+  const d = new Date(date + "T12:00:00");
+  const dow = d.getDay(); // 0 = Sunday
+  return addDays(date, -(dow === 0 ? 6 : dow - 1));
+}
+
+type WeekStats = {
+  runsPlanned: number;
+  runsCompleted: number;
+  plannedKm: number;
+  actualKm: number;
+  qualityTitle?: string;
+  qualityCompleted: boolean;
+  qualityPace?: string;
+  longestRunKm: number;
+};
+
+const QUALITY_TYPES = new Set(["tempo", "intervals", "race_pace", "race"]);
+const isRunRow = (t: string) => isRunningType(t) || t === "run";
+const isSegmentRow = (title: string) => title.startsWith("Warmup —") || title.startsWith("Cooldown —");
+
+/**
+ * Deterministic week metrics (Mon-Sun window) — computed in code so the
+ * numbers the coach quotes and the UI shows can never be hallucinated.
+ * Warmup/cooldown segment rows count toward km but not toward run count.
+ */
+async function computeWeekStats(ctx: QueryCtx | MutationCtx, weekStart: string): Promise<WeekStats> {
+  const weekEnd = addDays(weekStart, 6);
+  const all = await ctx.db.query("workouts").collect();
+  const week = all.filter((w) => w.date >= weekStart && w.date <= weekEnd);
+
+  const stats: WeekStats = {
+    runsPlanned: 0,
+    runsCompleted: 0,
+    plannedKm: 0,
+    actualKm: 0,
+    qualityCompleted: false,
+    longestRunKm: 0,
+  };
+
+  for (const w of week) {
+    if (!isRunRow(w.type) && !(w.originalType && isRunRow(w.originalType))) continue;
+    if (!w.isUnplanned) {
+      stats.runsPlanned++;
+      stats.plannedKm += w.targetDistance ?? 0;
+      if (QUALITY_TYPES.has(w.type) || (w.originalType && QUALITY_TYPES.has(w.originalType))) {
+        stats.qualityTitle = w.title;
+        stats.qualityCompleted = w.completed;
+        if (w.actualPace) stats.qualityPace = w.actualPace;
+      }
+    }
+    if (w.completed && w.actualDistance) {
+      stats.actualKm += w.actualDistance;
+      stats.longestRunKm = Math.max(stats.longestRunKm, w.actualDistance);
+      if (!w.isUnplanned || !isSegmentRow(w.title)) stats.runsCompleted++;
+    }
+  }
+  stats.plannedKm = Math.round(stats.plannedKm * 10) / 10;
+  stats.actualKm = Math.round(stats.actualKm * 10) / 10;
+  return stats;
+}
+
+const WEEK_STATS_VALIDATOR = v.object({
+  runsPlanned: v.number(),
+  runsCompleted: v.number(),
+  plannedKm: v.number(),
+  actualKm: v.number(),
+  qualityTitle: v.optional(v.string()),
+  qualityCompleted: v.boolean(),
+  qualityPace: v.optional(v.string()),
+  longestRunKm: v.number(),
+});
+
+export const getCurrentWeekStats = query({
+  handler: async (ctx) => {
+    const weekStart = mondayOf(todayToronto());
+    return { weekStart, stats: await computeWeekStats(ctx, weekStart) };
+  },
+});
+
+export const getWeeklyReviews = query({
+  handler: async (ctx) => {
+    const reviews = await ctx.db.query("coachWeeklyReviews").collect();
+    return reviews.sort((a, b) => b.weekStart.localeCompare(a.weekStart)).slice(0, 12);
+  },
+});
+
+export const getWeekReviewInput = internalQuery({
+  handler: async (ctx) => {
+    const today = todayToronto();
+    const weekStart = mondayOf(today);
+    const stats = await computeWeekStats(ctx, weekStart);
+    const reviews = await ctx.db.query("coachWeeklyReviews").collect();
+    const previousReviews = reviews
+      .filter((r) => r.weekStart < weekStart)
+      .sort((a, b) => b.weekStart.localeCompare(a.weekStart))
+      .slice(0, 6)
+      .map((r) => ({ weekStart: r.weekStart, stats: r.stats, review: r.review }));
+    return { today, weekStart, stats, previousReviews };
+  },
+});
+
+export const upsertWeeklyReview = internalMutation({
+  args: { weekStart: v.string(), stats: WEEK_STATS_VALIDATOR, review: v.string() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("coachWeeklyReviews")
+      .withIndex("by_week_start", (q) => q.eq("weekStart", args.weekStart))
+      .first();
+    if (existing) {
+      await ctx.db.patch(existing._id, { stats: args.stats, review: args.review });
+    } else {
+      await ctx.db.insert("coachWeeklyReviews", args);
+    }
+  },
+});
 
 export const getBriefings = query({
   handler: async (ctx) => {
@@ -71,6 +195,7 @@ export const getCoachContext = internalQuery({
         targetPace: w.targetPace,
         completed: w.completed,
         actualDistance: w.actualDistance,
+        actualDuration: w.actualDuration,
         actualPace: w.actualPace,
         avgHeartRate: w.avgHeartRate,
         isUnplanned: w.isUnplanned,
@@ -87,7 +212,17 @@ export const getCoachContext = internalQuery({
     const briefings = await ctx.db.query("coachBriefings").collect();
     const latestBriefing = briefings.sort((a, b) => b.date.localeCompare(a.date))[0];
 
+    const weekStart = mondayOf(today);
+    const currentWeek = { weekStart, stats: await computeWeekStats(ctx, weekStart) };
+    const allReviews = await ctx.db.query("coachWeeklyReviews").collect();
+    const weeklyReviews = allReviews
+      .sort((a, b) => b.weekStart.localeCompare(a.weekStart))
+      .slice(0, 6)
+      .map((r) => ({ weekStart: r.weekStart, stats: r.stats, review: r.review.slice(0, 500) }));
+
     return {
+      currentWeek,
+      weeklyReviews,
       today,
       plan: plan
         ? { name: plan.name, raceDate: plan.raceDate, goalPace: plan.goalPace, startDate: plan.startDate }
@@ -215,5 +350,43 @@ export const coachAddWorkout = internalMutation({
       completed: false,
     });
     return `Added ${args.title} on ${args.date}`;
+  },
+});
+
+/**
+ * Reset one day's Strava sync state so the next sync can rematch it: planned
+ * workouts revert to un-completed (restoring a sync-overwritten type), and
+ * unplanned activity rows are removed. The activities' Strava IDs disappear
+ * from the synced set, so an immediate re-sync re-imports and rematches them.
+ */
+export const coachRematchDate = internalMutation({
+  args: { date: v.string() },
+  handler: async (ctx, args) => {
+    const onDate = await ctx.db
+      .query("workouts")
+      .withIndex("by_date", (q) => q.eq("date", args.date))
+      .collect();
+    if (onDate.length === 0) throw new Error(`No workouts on ${args.date}`);
+    let cleared = 0;
+    let removed = 0;
+    for (const w of onDate) {
+      if (w.isUnplanned) {
+        await ctx.db.delete(w._id);
+        removed++;
+      } else if (w.completed || w.stravaActivityId) {
+        await ctx.db.patch(w._id, {
+          completed: false,
+          actualDistance: undefined,
+          actualDuration: undefined,
+          actualPace: undefined,
+          avgHeartRate: undefined,
+          stravaActivityId: undefined,
+          notes: undefined,
+          ...(w.originalType ? { type: w.originalType, originalType: undefined } : {}),
+        });
+        cleared++;
+      }
+    }
+    return `Reset ${cleared} planned workout(s), removed ${removed} unplanned activity row(s) on ${args.date}`;
   },
 });

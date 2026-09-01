@@ -71,6 +71,7 @@ export interface StravaActivity {
   distance: number;
   duration: number;
   date: string;
+  startTime: string; // full local timestamp — orders same-day activities
   avgHeartRate?: number;
 }
 
@@ -118,20 +119,11 @@ async function fetchStravaActivities(
   }
 
   const after = Math.floor(Date.now() / 1000) - lookbackDays * 24 * 60 * 60;
-  // Strava caps per_page at 200. A deep backfill needs the bigger page to
-  // reach months-old activities in a single request.
-  const perPage = lookbackDays > DEFAULT_LOOKBACK_DAYS ? 200 : 30;
-  const response: Response = await fetch(
-    `https://www.strava.com/api/v3/athlete/activities?after=${after}&per_page=${perPage}`,
-    {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error("Failed to fetch Strava activities");
-  }
-
+  // With `after`, Strava returns activities OLDEST first — so the window must
+  // be paginated to the end or the newest runs (the ones we care about) are
+  // silently dropped once the window holds more than one page.
+  const perPage = 200;
+  const MAX_PAGES = 10;
   const activities: Array<{
     type: string;
     id: number;
@@ -140,7 +132,30 @@ async function fetchStravaActivities(
     moving_time: number;
     start_date_local: string;
     average_heartrate?: number;
-  }> = await response.json();
+  }> = [];
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const response: Response = await fetch(
+      `https://www.strava.com/api/v3/athlete/activities?after=${after}&per_page=${perPage}&page=${page}`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch Strava activities (page ${page}, HTTP ${response.status}${response.status === 429 ? " — rate limited, try again in a few minutes" : ""})`
+      );
+    }
+
+    const batch: typeof activities = await response.json();
+    activities.push(...batch);
+    if (batch.length < perPage) break;
+    if (page === MAX_PAGES) {
+      console.warn(
+        `Strava fetch hit the ${MAX_PAGES}-page cap with a full page — newest activities in the ${lookbackDays}-day window may be missing`
+      );
+    }
+  }
 
   return activities.map((a) => ({
     stravaId: String(a.id),
@@ -149,6 +164,7 @@ async function fetchStravaActivities(
     distance: Math.round((a.distance / 1000) * 100) / 100,
     duration: a.moving_time,
     date: a.start_date_local.split("T")[0],
+    startTime: a.start_date_local,
     avgHeartRate: a.average_heartrate ? Math.round(a.average_heartrate) : undefined,
   }));
 }
@@ -170,6 +186,7 @@ export const syncAndAutoMatch = action({
       const mappedTitle = workoutTitleForType(mappedType);
       return {
         date: activity.date,
+        startTime: activity.startTime,
         stravaActivityId: activity.stravaId,
         actualDistance: activity.distance,
         actualDuration: activity.duration,

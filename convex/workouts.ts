@@ -1,6 +1,6 @@
 import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
-import { isRunningType, formatPaceWithUnit, typeAffinityScore, inferWeekNumber, getDayOfWeek } from "./lib/stravaMapping";
+import { isRunningType, formatPaceWithUnit, typeAffinityScore, inferWeekNumber, getDayOfWeek, parseTargetPaceSeconds, segmentRole } from "./lib/stravaMapping";
 
 export const getTrainingPlan = query({
   handler: async (ctx) => {
@@ -180,6 +180,7 @@ export const autoCompleteFromActivities = internalMutation({
   args: {
     activities: v.array(v.object({
       date: v.string(),
+      startTime: v.optional(v.string()),
       stravaActivityId: v.string(),
       actualDistance: v.number(),
       actualDuration: v.number(),
@@ -238,12 +239,27 @@ export const autoCompleteFromActivities = internalMutation({
       let bestMatchIdx = -1;
 
       if (plannedWorkout) {
-        // Score each activity against the planned workout type
+        // Score each activity against the planned workout type. Sessions are
+        // often logged as several activities (warmup / hard effort / cooldown
+        // recorded separately), which tie on type affinity — break ties by
+        // pace closest to the planned target so the warmup doesn't claim a
+        // time trial. Without a target pace, prefer the longest activity.
         let bestScore = -1;
+        let bestTiebreak = Infinity;
+        const targetSecs = parseTargetPaceSeconds(plannedWorkout.targetPace);
         for (let i = 0; i < unmatched.length; i++) {
-          const score = typeAffinityScore(plannedWorkout.type, unmatched[i].mappedType);
-          if (score > bestScore) {
+          const a = unmatched[i];
+          const score = typeAffinityScore(plannedWorkout.type, a.mappedType);
+          const paceSecs = a.actualDistance > 0 ? a.actualDuration / a.actualDistance : null;
+          let tiebreak: number;
+          if (targetSecs !== null) {
+            tiebreak = paceSecs !== null ? Math.abs(paceSecs - targetSecs) : Number.MAX_SAFE_INTEGER;
+          } else {
+            tiebreak = -a.actualDistance;
+          }
+          if (score > bestScore || (score === bestScore && tiebreak < bestTiebreak)) {
             bestScore = score;
+            bestTiebreak = tiebreak;
             bestMatchIdx = i;
           }
         }
@@ -282,7 +298,11 @@ export const autoCompleteFromActivities = internalMutation({
         autoCompleted++;
       }
 
-      // Create new workout records for remaining activities
+      // Create new workout records for remaining activities. When the day's
+      // planned run was matched, leftover run activities are almost always the
+      // rest of the same session recorded separately — label them by role so
+      // the calendar and the coach read the day correctly.
+      const mainEffort = bestMatchIdx >= 0 ? unmatched[bestMatchIdx] : null;
       for (let i = 0; i < unmatched.length; i++) {
         if (i === bestMatchIdx) continue;
         const activity = unmatched[i];
@@ -290,14 +310,30 @@ export const autoCompleteFromActivities = internalMutation({
           ? formatPaceWithUnit(activity.actualDistance, activity.actualDuration)
           : undefined;
 
+        let title = activity.mappedTitle;
+        let description = activity.activityName;
+        if (
+          mainEffort &&
+          plannedWorkout &&
+          isRunningType(plannedWorkout.type) &&
+          activity.mappedType === "run" &&
+          mainEffort.mappedType === "run"
+        ) {
+          const role = segmentRole(activity, mainEffort);
+          if (role) {
+            title = `${role} — ${plannedWorkout.title}`;
+            description = `${role} recorded separately from the main effort (${activity.activityName}).`;
+          }
+        }
+
         await ctx.db.insert("workouts", {
           planId: plan?._id ?? workoutsForDate[0]?.planId ?? ("" as never),
           date: activity.date,
           weekNumber: plan ? inferWeekNumber(activity.date, plan.startDate) : 1,
           dayOfWeek: getDayOfWeek(activity.date),
           type: activity.mappedType,
-          title: activity.mappedTitle,
-          description: activity.activityName,
+          title,
+          description,
           completed: true,
           actualDistance: activity.actualDistance,
           actualDuration: activity.actualDuration,

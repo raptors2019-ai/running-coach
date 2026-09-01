@@ -78,6 +78,21 @@ export default defineSchema({
     content: v.string(),
   }),
 
+  coachWeeklyReviews: defineTable({
+    weekStart: v.string(), // Monday, YYYY-MM-DD
+    stats: v.object({
+      runsPlanned: v.number(),
+      runsCompleted: v.number(),
+      plannedKm: v.number(),
+      actualKm: v.number(),
+      qualityTitle: v.optional(v.string()),
+      qualityCompleted: v.boolean(),
+      qualityPace: v.optional(v.string()),
+      longestRunKm: v.number(),
+    }),
+    review: v.string(),
+  }).index("by_week_start", ["weekStart"]),
+
   weatherCache: defineTable({
     date: v.string(),
     temperature: v.number(),

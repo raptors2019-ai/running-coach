@@ -93,3 +93,33 @@ export function formatPaceWithUnit(distanceKm: number, durationSeconds: number):
   const secs = Math.floor(paceSeconds % 60);
   return `${mins}:${secs.toString().padStart(2, "0")}/km`;
 }
+
+/** Average of all M:SS tokens in a target pace string ("4:45-5:15" -> 300), in sec/km */
+export function parseTargetPaceSeconds(targetPace?: string): number | null {
+  if (!targetPace) return null;
+  const tokens = [...targetPace.matchAll(/(\d+):(\d{2})/g)];
+  if (tokens.length === 0) return null;
+  const secs = tokens.map((m) => parseInt(m[1]) * 60 + parseInt(m[2]));
+  return secs.reduce((a, b) => a + b, 0) / secs.length;
+}
+
+/**
+ * Label a leftover same-day running activity relative to the day's main
+ * (matched) effort. Start-time ordering decides warmup vs cooldown; when
+ * times are missing, a slower pace than the main effort reads as a warmup.
+ * Returns null when the activity doesn't look like a session segment.
+ */
+export function segmentRole(
+  activity: { startTime?: string; actualDistance: number; actualDuration: number },
+  main: { startTime?: string; actualDistance: number; actualDuration: number }
+): "Warmup" | "Cooldown" | null {
+  if (activity.startTime && main.startTime) {
+    return activity.startTime < main.startTime ? "Warmup" : "Cooldown";
+  }
+  const pace = (a: { actualDistance: number; actualDuration: number }) =>
+    a.actualDistance > 0 ? a.actualDuration / a.actualDistance : null;
+  const p = pace(activity);
+  const pMain = pace(main);
+  if (p !== null && pMain !== null && p > pMain) return "Warmup";
+  return null;
+}
