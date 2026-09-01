@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { WeekStatsGrid } from "@/components/week-stats-grid";
+import { WeekAheadCard } from "@/components/week-ahead-card";
 import {
   Bot,
   Send,
@@ -16,8 +18,7 @@ import {
   ChevronDown,
   CalendarRange,
   RefreshCw,
-  CheckCircle2,
-  MinusCircle,
+  History,
 } from "lucide-react";
 import { getLocalDateString, formatDistance } from "@/lib/pace-utils";
 import { format, parseISO, addDays } from "date-fns";
@@ -53,51 +54,6 @@ function weekLabel(weekStart: string): string {
   return `${format(start, "MMM d")} – ${format(end, "MMM d")}`;
 }
 
-type WeekStats = {
-  runsPlanned: number;
-  runsCompleted: number;
-  plannedKm: number;
-  actualKm: number;
-  qualityTitle?: string;
-  qualityCompleted: boolean;
-  qualityPace?: string;
-  longestRunKm: number;
-};
-
-function WeekStatsGrid({ stats }: { stats: WeekStats }) {
-  return (
-    <div className="grid grid-cols-3 gap-2 text-center">
-      <div className="bg-muted/60 rounded-lg p-2">
-        <div className="text-lg font-bold">
-          {stats.runsCompleted}
-          <span className="text-sm font-normal text-muted-foreground">/{stats.runsPlanned}</span>
-        </div>
-        <div className="text-[11px] text-muted-foreground">Runs</div>
-      </div>
-      <div className="bg-muted/60 rounded-lg p-2">
-        <div className="text-lg font-bold">
-          {stats.actualKm}
-          <span className="text-sm font-normal text-muted-foreground">/{stats.plannedKm} km</span>
-        </div>
-        <div className="text-[11px] text-muted-foreground">Volume</div>
-      </div>
-      <div className="bg-muted/60 rounded-lg p-2">
-        <div className="text-lg font-bold flex items-center justify-center gap-1">
-          {stats.qualityCompleted ? (
-            <CheckCircle2 className="h-4 w-4 text-green-600" />
-          ) : (
-            <MinusCircle className="h-4 w-4 text-muted-foreground" />
-          )}
-          {stats.qualityPace && <span className="text-sm">{stats.qualityPace}</span>}
-        </div>
-        <div className="text-[11px] text-muted-foreground truncate">
-          {stats.qualityTitle ? stats.qualityTitle.replace(/^(BENCHMARK|RACE PACE TEST):?\s*/, "") : "Quality"}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function CoachPage() {
   const [passcode, setPasscode] = useState<string | null>(null);
   const [passcodeInput, setPasscodeInput] = useState("");
@@ -111,7 +67,7 @@ export default function CoachPage() {
 
   const briefings = useQuery(api.coach.getBriefings);
   const messages = useQuery(api.coach.getMessages);
-  const currentWeek = useQuery(api.coach.getCurrentWeekStats);
+  const overview = useQuery(api.coach.getWeeklyOverview);
   const weeklyReviews = useQuery(api.coach.getWeeklyReviews);
   const sendMessage = useAction(api.coachActions.sendMessage);
   const generateBriefing = useAction(api.coachActions.generateBriefingNow);
@@ -130,9 +86,12 @@ export default function CoachPage() {
   const today = getLocalDateString();
   const todaysBriefing = briefings?.find((b) => b.date === today);
   const pastBriefings = briefings?.filter((b) => b.date !== today) ?? [];
-  const currentWeekReview = weeklyReviews?.find((r) => r.weekStart === currentWeek?.weekStart);
-  const pastReviews =
-    weeklyReviews?.filter((r) => r.weekStart !== currentWeek?.weekStart) ?? [];
+  // "Last week" is the most recent completed Mon-Sun week. Anything dated
+  // later than that is a stale review of an in-progress week — hide it.
+  const lastWeekReview = weeklyReviews?.find((r) => r.weekStart === overview?.reviewWeekStart);
+  const pastReviews = overview
+    ? (weeklyReviews?.filter((r) => r.weekStart < overview.reviewWeekStart) ?? [])
+    : [];
 
   const handlePasscodeFailure = (e: unknown, fallback: string) => {
     if (e instanceof Error && e.message.includes("Wrong passcode")) {
@@ -341,38 +300,48 @@ export default function CoachPage() {
 
         {/* ---------- WEEKLY ---------- */}
         <TabsContent value="weekly" className="space-y-4 mt-2">
-          <Card className="border-blue-200 bg-gradient-to-br from-blue-50/60 to-indigo-50/40">
+          {overview ? (
+            <WeekAheadCard
+              weekStart={overview.weekStart}
+              today={overview.today}
+              workouts={overview.workouts}
+              stats={overview.stats}
+              lookahead={lastWeekReview ?? null}
+              onGenerate={handleGenerateReview}
+              generating={reviewLoading}
+            />
+          ) : (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mx-auto" />
+          )}
+
+          <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center justify-between">
                 <span className="flex items-center gap-2">
-                  <CalendarRange className="h-4 w-4 text-blue-600" />
-                  This Week
+                  <History className="h-4 w-4 text-muted-foreground" />
+                  Last Week
                 </span>
-                {currentWeek && (
+                {overview && (
                   <span className="text-xs font-normal text-muted-foreground">
-                    {weekLabel(currentWeek.weekStart)}
+                    {weekLabel(overview.reviewWeekStart)}
                   </span>
                 )}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {currentWeek ? (
-                <WeekStatsGrid stats={currentWeek.stats} />
-              ) : (
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mx-auto" />
-              )}
-              {currentWeek && currentWeek.stats.longestRunKm > 0 && (
-                <p className="text-xs text-muted-foreground text-center">
-                  Longest run: {formatDistance(currentWeek.stats.longestRunKm)}
-                </p>
-              )}
-              {currentWeekReview ? (
-                <p className="text-sm whitespace-pre-wrap border-t border-blue-100 pt-3">
-                  {currentWeekReview.review}
-                </p>
+              {lastWeekReview ? (
+                <>
+                  <WeekStatsGrid stats={lastWeekReview.stats} />
+                  {lastWeekReview.stats.longestRunKm > 0 && (
+                    <p className="text-xs text-muted-foreground text-center">
+                      Longest run: {formatDistance(lastWeekReview.stats.longestRunKm)}
+                    </p>
+                  )}
+                  <p className="text-sm whitespace-pre-wrap border-t pt-3">{lastWeekReview.review}</p>
+                </>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  The coach reviews the week every Sunday evening.
+                  No review of last week yet. The coach writes one every Monday morning.
                 </p>
               )}
               <Button
@@ -386,14 +355,14 @@ export default function CoachPage() {
                 ) : (
                   <RefreshCw className="h-4 w-4 mr-1" />
                 )}
-                {currentWeekReview ? "Refresh review" : "Review now"}
+                {lastWeekReview ? "Refresh review" : "Review now"}
               </Button>
             </CardContent>
           </Card>
 
           {pastReviews.length > 0 ? (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-muted-foreground">Past Weeks</h2>
+              <h2 className="text-sm font-semibold text-muted-foreground">Earlier Weeks</h2>
               {pastReviews.map((r) => (
                 <Card key={r._id}>
                   <CardHeader className="pb-2">
