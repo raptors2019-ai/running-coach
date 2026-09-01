@@ -35,7 +35,9 @@ export function WeekCard({ weekNum, weekLabel, workouts, onSelectWorkout }: Week
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">{weekLabel}</CardTitle>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <span className={quotaColor}>{runCount}/{minRuns} runs</span>
+            {weekNum > 0 && (
+              <span className={quotaColor}>{runCount}/{minRuns} runs</span>
+            )}
             <span>{formatDistance(totalDistance)} | {completed}/{workouts.length} done</span>
           </div>
         </div>

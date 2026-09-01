@@ -1,5 +1,33 @@
 import { mutation } from "./_generated/server";
-import { formatPaceWithUnit } from "./lib/stravaMapping";
+import { formatPaceWithUnit, inferWeekNumber } from "./lib/stravaMapping";
+
+/**
+ * Re-derives weekNumber for Strava-created (unplanned) workouts in the current
+ * plan using Monday-based plan weeks. Earlier syncs counted 7-day blocks from
+ * the start date, which put Mon Aug 31 in week 1 and pre-plan runs in week 1
+ * instead of week 0. Planned rows come from the seed and are left untouched.
+ *
+ * Run with: npx convex run backfill:renumberWeeks
+ */
+export const renumberWeeks = mutation({
+  handler: async (ctx) => {
+    const plan = await ctx.db.query("trainingPlan").first();
+    if (!plan) throw new Error("No training plan found");
+    const rows = await ctx.db
+      .query("workouts")
+      .withIndex("by_plan", (q) => q.eq("planId", plan._id))
+      .collect();
+    const changes: string[] = [];
+    for (const w of rows) {
+      if (!w.isUnplanned) continue;
+      const week = inferWeekNumber(w.date, plan.startDate);
+      if (week === w.weekNumber) continue;
+      await ctx.db.patch(w._id, { weekNumber: week });
+      changes.push(`${w.date} ${w.title}: W${w.weekNumber} → W${week}`);
+    }
+    return changes.length ? changes.join("\n") : "Nothing to renumber";
+  },
+});
 
 /**
  * Records the Aug 27 2K TT benchmark outcome durably, whether or not the

@@ -47,6 +47,7 @@ export function WorkoutCalendar() {
   );
 
   const weekLabels: Record<number, string> = {
+    0: "Pre-plan - Where you started",
     1: "Week 1 - Rebuild + Benchmark",
     2: "Week 2 - Raw Speed",
     3: "Week 3 - VO2max",

@@ -74,11 +74,21 @@ export function typeAffinityScore(plannedType: string, activityType: string): nu
   return 0;
 }
 
+/**
+ * Plan weeks run Monday–Sunday. Week 1 is the (possibly partial) week that
+ * contains the plan start date, so a plan starting Tue Aug 25 rolls to week 2
+ * on Mon Aug 31. Anything before the start date is week 0 — pre-plan history
+ * that should never count toward a plan week's volume.
+ */
 export function inferWeekNumber(date: string, planStartDate: string): number {
-  const d = new Date(date + "T12:00:00");
+  if (date < planStartDate) return 0;
   const start = new Date(planStartDate + "T12:00:00");
-  const diffDays = Math.floor((d.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-  return Math.max(1, Math.floor(diffDays / 7) + 1);
+  // JS getDay(): Sun=0..Sat=6 → days since the Monday on/before the start.
+  const sinceMonday = (start.getDay() + 6) % 7;
+  const weekOneMonday = new Date(start.getTime() - sinceMonday * 86_400_000);
+  const d = new Date(date + "T12:00:00");
+  const diffDays = Math.floor((d.getTime() - weekOneMonday.getTime()) / 86_400_000);
+  return Math.floor(diffDays / 7) + 1;
 }
 
 export function getDayOfWeek(date: string): string {
