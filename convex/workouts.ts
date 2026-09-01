@@ -70,6 +70,7 @@ export const markWorkoutComplete = mutation({
     const { workoutId, ...data } = args;
     await ctx.db.patch(workoutId, {
       completed: true,
+      missedAt: undefined,
       ...data,
     });
   },
@@ -88,6 +89,7 @@ export const updateWorkoutFromStrava = mutation({
     const { workoutId, ...data } = args;
     await ctx.db.patch(workoutId, {
       completed: true,
+      missedAt: undefined,
       ...data,
     });
   },
@@ -154,7 +156,34 @@ export const unmarkWorkoutComplete = mutation({
       avgHeartRate: undefined,
       notes: undefined,
       stravaActivityId: undefined,
+      missedAt: undefined,
     });
+  },
+});
+
+/**
+ * Flags planned runs whose day has passed with nothing logged. Runs from the
+ * morning cron AFTER the Strava sync, so late-evening uploads get overnight
+ * grace before a day is called missed. A later sync that matches an activity
+ * clears the flag again.
+ */
+export const markMissedRuns = internalMutation({
+  handler: async (ctx): Promise<number> => {
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Toronto" });
+    const plan = await ctx.db.query("trainingPlan").first();
+    if (!plan) return 0;
+
+    const all = await ctx.db.query("workouts").collect();
+    let marked = 0;
+    for (const w of all) {
+      if (w.planId !== plan._id) continue; // never touch archived-plan history
+      if (w.isUnplanned || w.completed || w.missedAt) continue;
+      if (!isRunningType(w.type)) continue;
+      if (w.date >= today) continue;
+      await ctx.db.patch(w._id, { missedAt: Date.now() });
+      marked++;
+    }
+    return marked;
   },
 });
 
@@ -275,6 +304,7 @@ export const autoCompleteFromActivities = internalMutation({
 
         const patch: Record<string, unknown> = {
           completed: true,
+          missedAt: undefined,
           actualDistance: bestActivity.actualDistance,
           actualDuration: bestActivity.actualDuration,
           actualPace: pace,

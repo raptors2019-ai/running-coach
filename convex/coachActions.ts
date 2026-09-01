@@ -24,7 +24,11 @@ Think week-first: judge progress against THIS WEEK SO FAR and the WEEKLY REVIEW 
 
 Strava data quirk: the athlete often records one session as several Strava activities (warmup, hard effort, cooldown logged separately). The sync attaches the activity whose pace best fits the planned target to the planned workout, and labels the leftovers by role — rows titled 'Warmup — ...' or 'Cooldown — ...' are segments of that day's session, so read the planned row as the main effort and the labeled rows as its bookends. If a day still looks mismatched (a time trial wearing a jogging pace, segments labeled wrong), call rematch_date for that day, then re-check with get_workouts before drawing conclusions.
 
-You can edit the plan with your tools when the athlete asks or when circumstances clearly require it (travel, illness, fatigue, missed sessions). Rules: never edit completed workouts (history is immutable — rematch_date is the one exception, since it rebuilds a day from Strava rather than rewriting it); protect the Tuesday quality sessions and the two checkpoint workouts — move them rather than drop them; easy volume is the first thing to cut; never stack hard days back to back; nothing hard in the final 3 days before the race. After making changes, summarize exactly what you changed. Dates are YYYY-MM-DD. If a request is ambiguous, make the sensible coaching call and say what you assumed.`;
+You can edit the plan with your tools when the athlete asks or when circumstances clearly require it (travel, illness, fatigue, missed sessions). Rules: never edit completed workouts (history is immutable — rematch_date is the one exception, since it rebuilds a day from Strava rather than rewriting it); protect the Tuesday quality sessions and the two checkpoint workouts — move them rather than drop them; easy volume is the first thing to cut; never stack hard days back to back; nothing hard in the final 3 days before the race. After making changes, summarize exactly what you changed. Dates are YYYY-MM-DD. If a request is ambiguous, make the sensible coaching call and say what you assumed.
+
+Missed runs: a workout flagged missed:true is one the app's morning check found unlogged after its day passed (with overnight grace for late uploads). When a run is newly missed, decide whether the week needs rebalancing and make the edits yourself: missed easy volume is usually absorbed, not crammed in later; the long run may shift within its own week; quality sessions and checkpoints get moved, never dropped. If no edit is needed, one neutral sentence at most. Whatever you do, state it plainly in the briefing.
+
+Checkpoints: CHECKPOINT RESULTS in your context are ground truth for the goal — a recorded pass settles the question, never ask for a retest it already answered. When a checkpoint workout completes and no result is recorded yet, evaluate its decision rule against the actual numbers and store it with record_checkpoint (benchmark_2k = the Aug 27 2K TT, race_pace_3k = the Sep 15 3K @ 5:00), including goal_seconds when the outcome changes the race target.`;
 
 const TOOLS: Anthropic.Beta.BetaTool[] = [
   {
@@ -101,6 +105,22 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
       required: ["date", "type", "title", "description"],
     },
   },
+  {
+    name: "record_checkpoint",
+    description: "Record the outcome of a checkpoint workout (the plan's decision points). Upserts by key — call again with the same key to correct an entry.",
+    input_schema: {
+      type: "object",
+      properties: {
+        key: { type: "string", enum: ["benchmark_2k", "race_pace_3k"] },
+        date: { type: "string", description: "YYYY-MM-DD the checkpoint was run" },
+        result_seconds: { type: "number", description: "Elapsed time of the test effort in seconds" },
+        result_distance_km: { type: "number", description: "Distance of the test effort in km" },
+        decision: { type: "string", description: "The decision the result triggers, e.g. 'Passed — chase 24:30'" },
+        goal_seconds: { type: "number", description: "Updated race goal in seconds, only if the result changes it" },
+      },
+      required: ["key", "date", "decision"],
+    },
+  },
 ];
 
 type WorkoutRow = {
@@ -120,6 +140,7 @@ type CoachContext = {
   latestBriefing: { date: string; content: string } | null;
   currentWeek: { weekStart: string; stats: unknown };
   weeklyReviews: { weekStart: string; stats: unknown; review: string }[];
+  checkpoints: { key: string; date: string; decision: string }[];
 };
 
 function contextBlock(context: CoachContext): string {
@@ -131,6 +152,9 @@ function contextBlock(context: CoachContext): string {
     `Plan: ${JSON.stringify(context.plan)}`,
     `Workouts last 14 days + upcoming: ${JSON.stringify(context.workouts)}`,
     `THIS WEEK SO FAR (Mon-Sun, app-computed — treat as ground truth): ${JSON.stringify(context.currentWeek)}`,
+    context.checkpoints.length > 0
+      ? `CHECKPOINT RESULTS (recorded decisions — ground truth for the goal): ${JSON.stringify(context.checkpoints)}`
+      : "No checkpoint results recorded yet.",
     context.weeklyReviews.length > 0
       ? `WEEKLY REVIEW HISTORY (newest first): ${JSON.stringify(context.weeklyReviews)}`
       : "No weekly reviews yet — this is the first week.",
@@ -182,9 +206,40 @@ async function runTool(
         targetDistance: input.target_distance,
         targetPace: input.target_pace,
       });
+    case "record_checkpoint":
+      return await ctx.runMutation(internal.coach.coachRecordCheckpoint, {
+        key: input.key,
+        date: input.date,
+        resultSeconds: input.result_seconds,
+        resultDistanceKm: input.result_distance_km,
+        decision: input.decision,
+        goalSeconds: input.goal_seconds,
+      });
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
+}
+
+/** Execute every tool call in a response, collecting results (errors included) for the next turn. */
+async function runToolCalls(
+  ctx: ActionCtx,
+  toolUses: Anthropic.Beta.BetaToolUseBlock[]
+): Promise<Anthropic.Beta.BetaToolResultBlockParam[]> {
+  const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
+  for (const tu of toolUses) {
+    try {
+      const result = await runTool(ctx, tu.name, tu.input as Record<string, unknown>);
+      results.push({ type: "tool_result", tool_use_id: tu.id, content: result });
+    } catch (e) {
+      results.push({
+        type: "tool_result",
+        tool_use_id: tu.id,
+        content: e instanceof Error ? e.message : String(e),
+        is_error: true,
+      });
+    }
+  }
+  return results;
 }
 
 /**
@@ -288,21 +343,7 @@ export const sendMessage = action({
       }
 
       // Execute all tool calls, return all results in one user message
-      const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
-      for (const tu of toolUses) {
-        try {
-          const result = await runTool(ctx, tu.name, tu.input as Record<string, unknown>);
-          results.push({ type: "tool_result", tool_use_id: tu.id, content: result });
-        } catch (e) {
-          results.push({
-            type: "tool_result",
-            tool_use_id: tu.id,
-            content: e instanceof Error ? e.message : String(e),
-            is_error: true,
-          });
-        }
-      }
-      messages.push({ role: "user", content: results });
+      messages.push({ role: "user", content: await runToolCalls(ctx, toolUses) });
     }
 
     if (!reply) reply = "Sorry, I lost my train of thought — try asking again.";
@@ -320,6 +361,10 @@ export const generateBriefing = internalAction({
     } catch {
       // Not connected or Strava down — brief on what we have
     }
+
+    // After the sync (so late-evening uploads got their chance to complete a
+    // day), flag planned runs whose date passed with nothing logged.
+    const newlyMissed: number = await ctx.runMutation(internal.workouts.markMissedRuns, {});
 
     const context: CoachContext = await ctx.runQuery(internal.coach.getCoachContext);
 
@@ -339,31 +384,49 @@ export const generateBriefing = internalAction({
     const todayHasPlannedRun = context.workouts.some(
       (w) => w.date === context.today && !w.isUnplanned && isRun(w)
     );
-    if (!args.force && !yesterdayHadRun && !todayHasPlannedRun) {
+    if (!args.force && !yesterdayHadRun && !todayHasPlannedRun && newlyMissed === 0) {
       console.log(`Briefing skipped for ${context.today}: no run yesterday, none planned today`);
       return;
     }
 
     const client = new Anthropic();
 
-    const response = await createMessage(client, {
-      model: MODEL,
-      max_tokens: 2048,
-      system: [
-        { type: "text", text: SYSTEM_PROMPT },
-        { type: "text", text: contextBlock(context) },
-      ],
-      messages: [
-        {
-          role: "user",
-          content:
-            "Write this morning's briefing. Lead with what matters most today. If yesterday had a run, react to its actual numbers; if yesterday was rest, a lift, or simply has no data, don't comment on it — go straight to the week. Use THIS WEEK SO FAR and the weekly review history for the holistic view (volume and pace trend across weeks, not just days), then set today's focus. If recent chat mentioned schedule constraints, account for them. 2-8 sentences depending on how much actually happened — short is fine. Plain text, written directly to the athlete.",
-        },
-      ],
-    });
+    // Same tool loop as chat: the briefing can adapt the plan (missed runs)
+    // and record checkpoint outcomes, then must say what it did.
+    const messages: Anthropic.Beta.BetaMessageParam[] = [
+      {
+        role: "user",
+        content:
+          "Write this morning's briefing. Lead with what matters most today. If yesterday had a run, react to its actual numbers; if yesterday was rest, a lift, or simply has no data, don't comment on it — go straight to the week. Use THIS WEEK SO FAR and the weekly review history for the holistic view (volume and pace trend across weeks, not just days), then set today's focus. If a workout is newly flagged missed:true, decide whether the week needs rebalancing, make any edits with your tools per your guardrails, and state exactly what you changed (or that nothing needed to change). If a checkpoint workout has completed but has no recorded result, evaluate its decision rule and record it with record_checkpoint, then state the outcome. If recent chat mentioned schedule constraints, account for them. 2-8 sentences depending on how much actually happened — short is fine. Plain text, written directly to the athlete.",
+      },
+    ];
 
-    if (response.stop_reason === "refusal") return;
-    const content = textOf(response.content);
+    let content = "";
+    for (let turn = 0; turn < 6; turn++) {
+      const response = await createMessage(client, {
+        model: MODEL,
+        max_tokens: 2048,
+        system: [
+          { type: "text", text: SYSTEM_PROMPT },
+          { type: "text", text: contextBlock(context) },
+        ],
+        tools: TOOLS,
+        messages,
+      });
+
+      if (response.stop_reason === "refusal") return;
+
+      messages.push({ role: "assistant", content: response.content });
+      const toolUses = response.content.filter(
+        (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use"
+      );
+      if (toolUses.length === 0 || response.stop_reason !== "tool_use") {
+        content = textOf(response.content);
+        break;
+      }
+      messages.push({ role: "user", content: await runToolCalls(ctx, toolUses) });
+    }
+
     if (content) {
       await ctx.runMutation(internal.coach.upsertBriefing, { date: context.today, content });
     }

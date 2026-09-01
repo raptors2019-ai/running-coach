@@ -4,7 +4,9 @@ import { useQuery, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useEffect, useRef } from "react";
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
+// 15 min: short enough that a run finished before opening the app shows up,
+// long enough to stay far from Strava's 200 req / 15 min limit.
+const SYNC_THROTTLE_MS = 15 * 60 * 1000;
 
 export function useAutoStravaSync() {
   const stravaAuth = useQuery(api.strava.getStravaAuth);
@@ -16,7 +18,7 @@ export function useAutoStravaSync() {
     if (!stravaAuth || hasFired.current) return;
 
     const now = Date.now();
-    const shouldSync = !lastSyncAt || now - lastSyncAt > ONE_HOUR_MS;
+    const shouldSync = !lastSyncAt || now - lastSyncAt > SYNC_THROTTLE_MS;
 
     if (shouldSync) {
       hasFired.current = true;

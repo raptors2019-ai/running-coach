@@ -1,5 +1,101 @@
 import { mutation } from "./_generated/server";
-import { v } from "convex/values";
+import { formatPaceWithUnit } from "./lib/stravaMapping";
+
+/**
+ * Records the Aug 27 2K TT benchmark outcome durably, whether or not the
+ * Strava sync ever matched the activity. Idempotent: safe to run after a
+ * successful sync (keeps the synced numbers, only adds the decision note)
+ * or before one (fills in the numbers from Strava activity 19928661458).
+ *
+ * Run with: npx convex run backfill:recordBenchmarkResult
+ */
+export const recordBenchmarkResult = mutation({
+  handler: async (ctx) => {
+    const DATE = "2026-08-27";
+    const STRAVA_ID = "19928661458";
+    const DISTANCE_KM = 1.98;
+    const DURATION_S = 552; // 9:12
+    const NOTE =
+      "Checkpoint 1 — 2K TT benchmark: 1.98 km in 9:12 (4:39/km on Strava, ~9:18 scaled to a full 2 km; best estimated 1K 4:38, fastest mile 7:31). " +
+      "Well under the 9:50 bar → decision: chase 24:30. No retest needed — next checkpoint is the Sep 15 race pace test (3K @ 5:00/km).";
+
+    const rows = await ctx.db
+      .query("workouts")
+      .withIndex("by_date", (q) => q.eq("date", DATE))
+      .collect();
+    const benchmark = rows.find((w) => !w.isUnplanned && w.type === "race_pace")
+      ?? rows.find((w) => !w.isUnplanned)
+      ?? rows[0];
+
+    let workoutId = benchmark?._id;
+    let workoutMsg: string;
+    if (benchmark) {
+      if (benchmark.notes?.includes("Checkpoint 1")) {
+        workoutMsg = "Benchmark workout already recorded";
+      } else {
+        await ctx.db.patch(benchmark._id, {
+          completed: true,
+          missedAt: undefined,
+          // A successful Strava sync already holds the real numbers — keep them.
+          ...(benchmark.stravaActivityId
+            ? {}
+            : {
+                actualDistance: DISTANCE_KM,
+                actualDuration: DURATION_S,
+                actualPace: formatPaceWithUnit(DISTANCE_KM, DURATION_S),
+                stravaActivityId: STRAVA_ID,
+              }),
+          notes: benchmark.notes ? `${benchmark.notes}\n${NOTE}` : NOTE,
+        });
+        workoutMsg = `Benchmark result recorded on existing ${benchmark.title}`;
+      }
+    } else {
+      const plan = await ctx.db.query("trainingPlan").first();
+      if (!plan) throw new Error("No training plan found");
+      workoutId = await ctx.db.insert("workouts", {
+        planId: plan._id,
+        date: DATE,
+        weekNumber: 1,
+        dayOfWeek: "Thu",
+        type: "race_pace",
+        title: "BENCHMARK: 2K Time Trial",
+        description:
+          "WU 1.5km + 2km hard (controlled all-out) + CD 1km. This calibrates the whole plan.",
+        targetDistance: 4.5,
+        targetPace: "4:45-5:15",
+        completed: true,
+        actualDistance: DISTANCE_KM,
+        actualDuration: DURATION_S,
+        actualPace: formatPaceWithUnit(DISTANCE_KM, DURATION_S),
+        stravaActivityId: STRAVA_ID,
+        notes: NOTE,
+      });
+      workoutMsg = "Benchmark workout created with result";
+    }
+
+    // Structured checkpoint record — what the coach and UI branch on.
+    const checkpoint = {
+      key: "benchmark_2k" as const,
+      date: DATE,
+      workoutId,
+      resultSeconds: DURATION_S,
+      resultDistanceKm: DISTANCE_KM,
+      decision: "Passed — chase 24:30 (9:12 for 1.98 km, bar was 9:50). No retest needed.",
+      goalSeconds: 1470, // 24:30
+    };
+    const existingCp = await ctx.db
+      .query("checkpoints")
+      .withIndex("by_key", (q) => q.eq("key", "benchmark_2k"))
+      .first();
+    if (existingCp) {
+      await ctx.db.patch(existingCp._id, checkpoint);
+    } else {
+      await ctx.db.insert("checkpoints", checkpoint);
+    }
+
+    return `${workoutMsg}; checkpoint benchmark_2k recorded`;
+  },
+});
 
 export const addBaselineRuns = mutation({
   handler: async (ctx) => {

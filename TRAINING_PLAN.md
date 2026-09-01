@@ -17,12 +17,14 @@
 |------|-----|------|---------|----------|------|--------|
 | Aug 25 | Tue | Easy | 4km easy + 4x100m strides. Wake the legs up. | 4 km | 6:45-7:15 | [ ] |
 | Aug 26 | Wed | Upper Body | Lift only. Legs fresh for tomorrow. | — | — | [ ] |
-| **Aug 27** | **Thu** | **BENCHMARK** | **WU 1.5km + 2km time trial + CD 1km. Calibrates the whole plan.** | **4.5 km** | **all-out controlled** | [ ] |
+| **Aug 27** | **Thu** | **BENCHMARK** | **WU 1.5km + 2km time trial + CD 1km. Calibrates the whole plan.** | **4.5 km** | **all-out controlled** | [x] |
 | Aug 28 | Fri | Lower Body | Lift only. | — | — | [ ] |
 | Aug 29 | Sat | Partner Run | 2-3km conversational with your gf. Real recovery volume. | 2.5 km | 7:00+ | [ ] |
-| Aug 30 | Sun | Zone 2 | 5km relaxed. Moveable to Monday. | 5 km | 6:45-7:15 | [ ] |
+| Aug 30 | Sun | Zone 2 | 5km relaxed. Moveable to Monday. | 5 km | 6:45-7:15 | missed |
 
 **Benchmark decision:** 2K under 9:50 (4:55/km) → chase 24:30. 9:50-10:30 → sub-25 is the goal. Over 10:30 → build and retest week 3.
+
+**✅ Benchmark result (Aug 27):** 1.98 km in 9:12 — 4:39/km, ~9:18 scaled to a full 2K (best estimated 1K 4:38, fastest mile 7:31, both PRs). **Well under 9:50 → chasing 24:30. No retest needed** — the week-3 retest clause only applied over 10:30. Next checkpoint: Sep 15 race pace test.
 
 ---
 
@@ -31,7 +33,7 @@
 | Date | Day | Type | Workout | Distance | Pace | Status |
 |------|-----|------|---------|----------|------|--------|
 | Aug 31 | Mon | Upper Body | Lift only. | — | — | [ ] |
-| **Sep 1** | **Tue** | **Intervals** | **WU 1.5km + 8x400m @ 4:45-4:55/km (90s jog) + CD 1km. Even splits — don't hero the first two.** | **7 km** | **4:45-4:55** | [ ] |
+| **Sep 1** | **Tue** | **Intervals** | **WU 1.5km + 8x400m @ 4:45-4:55/km (90s jog) + CD 1km. Even splits — don't hero the first two.** | **7 km** | **4:45-4:55** | [x] |
 | Sep 2 | Wed | Lower Body | Lift, day after speed. | — | — | [ ] |
 | Sep 3 | Thu | Zone 2 | 5km genuinely easy. | 5 km | 6:45-7:15 | [ ] |
 | Sep 4 | Fri | Rest | Full rest or easy swim. | — | — | [ ] |
@@ -112,7 +114,7 @@ If the checkpoints upgraded you to 24:30: run 4:57 flat through 4K and kick.
 
 ## Decision Points
 
-- **Aug 27 benchmark (2K TT):** ≤9:50 → chase 24:30 | 9:50-10:30 → sub-25 | >10:30 → build + retest
+- **Aug 27 benchmark (2K TT):** ≤9:50 → chase 24:30 | 9:50-10:30 → sub-25 | >10:30 → build + retest — **RESULT: 9:12 for 1.98 km (~9:18/2K) → chase 24:30. Passed, no retest.**
 - **Sep 15 race pace test (3K @ 5:00):** controlled-but-hard → sub-25 locked | easy → 24:15-24:30 | couldn't hold → 25:30 negative split
 
 ---
