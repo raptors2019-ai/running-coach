@@ -15,29 +15,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { formatDistance, getLocalDateString } from "@/lib/pace-utils";
 import { CloudSun } from "lucide-react";
-import { startOfWeek, endOfWeek, parseISO } from "date-fns";
-
-function getWeeklyStats(workouts: Array<{ date: string; completed: boolean; targetDistance?: number; actualDistance?: number }>) {
-  const today = parseISO(getLocalDateString());
-  // Week starts on Sunday
-  const weekStart = startOfWeek(today, { weekStartsOn: 0 });
-  const weekEnd = endOfWeek(today, { weekStartsOn: 0 });
-
-  const weekStartStr = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, "0")}-${String(weekStart.getDate()).padStart(2, "0")}`;
-  const weekEndStr = `${weekEnd.getFullYear()}-${String(weekEnd.getMonth() + 1).padStart(2, "0")}-${String(weekEnd.getDate()).padStart(2, "0")}`;
-
-  const thisWeek = workouts.filter((w) => w.date >= weekStartStr && w.date <= weekEndStr);
-  const completed = thisWeek.filter((w) => w.completed);
-  const plannedKm = thisWeek.reduce((sum, w) => sum + (w.targetDistance || 0), 0);
-  const completedKm = completed.reduce((sum, w) => sum + (w.actualDistance || w.targetDistance || 0), 0);
-
-  return {
-    completedCount: completed.length,
-    totalCount: thisWeek.length,
-    completedKm,
-    plannedKm,
-  };
-}
+import { getWeeklyStats } from "@/lib/weekly-stats";
 
 export default function HomePage() {
   useAutoStravaSync();
@@ -45,7 +23,7 @@ export default function HomePage() {
   const plan = useQuery(api.workouts.getTrainingPlan);
   const workouts = useQuery(api.workouts.getAllWorkouts);
 
-  const stats = workouts ? getWeeklyStats(workouts) : null;
+  const stats = workouts ? getWeeklyStats(workouts, getLocalDateString()) : null;
 
   return (
     <div className="p-4 space-y-4">
