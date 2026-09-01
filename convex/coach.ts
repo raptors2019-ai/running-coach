@@ -1,4 +1,5 @@
 import { query, internalQuery, internalMutation, type QueryCtx, type MutationCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { inferWeekNumber, getDayOfWeek, isRunningType } from "./lib/stravaMapping";
 
@@ -17,6 +18,46 @@ function mondayOf(date: string): string {
   const d = new Date(date + "T12:00:00");
   const dow = d.getDay(); // 0 = Sunday
   return addDays(date, -(dow === 0 ? 6 : dow - 1));
+}
+
+/**
+ * The week a weekly review covers: always the most recent *completed* Mon-Sun
+ * week. Reviewing the week containing today would grade an empty week on a
+ * Monday morning, which is exactly when the review is written.
+ */
+function previousWeekStart(today: string): string {
+  return addDays(mondayOf(today), -7);
+}
+
+/** The subset of a workout row the coach needs to reason about a week. */
+function slimWorkout(w: Doc<"workouts">) {
+  return {
+    date: w.date,
+    day: w.dayOfWeek,
+    type: w.type,
+    title: w.title,
+    description: w.description,
+    targetDistance: w.targetDistance,
+    targetPace: w.targetPace,
+    intervals: w.intervals,
+    completed: w.completed,
+    missed: w.missedAt ? true : undefined,
+    actualDistance: w.actualDistance,
+    actualDuration: w.actualDuration,
+    actualPace: w.actualPace,
+    avgHeartRate: w.avgHeartRate,
+    isUnplanned: w.isUnplanned,
+    originalType: w.originalType,
+    notes: w.notes,
+  };
+}
+
+async function workoutsInWeek(ctx: QueryCtx | MutationCtx, weekStart: string) {
+  const weekEnd = addDays(weekStart, 6);
+  const all = await ctx.db.query("workouts").collect();
+  return all
+    .filter((w) => w.date >= weekStart && w.date <= weekEnd)
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 type WeekStats = {
@@ -86,10 +127,22 @@ const WEEK_STATS_VALIDATOR = v.object({
   longestRunKm: v.number(),
 });
 
-export const getCurrentWeekStats = query({
+/**
+ * Everything the Weekly tab needs in one shot: the current week's live stats
+ * and day-by-day rows (the "week ahead"), and which week the latest review
+ * should cover (the "last week").
+ */
+export const getWeeklyOverview = query({
   handler: async (ctx) => {
-    const weekStart = mondayOf(todayToronto());
-    return { weekStart, stats: await computeWeekStats(ctx, weekStart) };
+    const today = todayToronto();
+    const weekStart = mondayOf(today);
+    return {
+      today,
+      weekStart,
+      reviewWeekStart: previousWeekStart(today),
+      stats: await computeWeekStats(ctx, weekStart),
+      workouts: await workoutsInWeek(ctx, weekStart),
+    };
   },
 });
 
@@ -103,27 +156,86 @@ export const getWeeklyReviews = query({
 export const getWeekReviewInput = internalQuery({
   handler: async (ctx) => {
     const today = todayToronto();
-    const weekStart = mondayOf(today);
+    const weekStart = previousWeekStart(today);
+    const weekEnd = addDays(weekStart, 6);
+    const nextWeekStart = addDays(weekStart, 7);
+
     const stats = await computeWeekStats(ctx, weekStart);
+    const workouts = (await workoutsInWeek(ctx, weekStart)).map(slimWorkout);
+    const nextWeekWorkouts = (await workoutsInWeek(ctx, nextWeekStart))
+      .filter((w) => !w.isUnplanned)
+      .map(slimWorkout);
+
+    const journals = (await ctx.db.query("journalEntries").collect())
+      .filter((j) => j.date >= weekStart && j.date <= weekEnd)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((j) => ({ date: j.date, mood: j.mood, notes: j.userNotes }));
+
+    const plan = await ctx.db.query("trainingPlan").first();
+    const checkpoints = (await ctx.db.query("checkpoints").collect())
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((c) => ({
+        key: c.key,
+        date: c.date,
+        resultSeconds: c.resultSeconds,
+        resultDistanceKm: c.resultDistanceKm,
+        decision: c.decision,
+        goalSeconds: c.goalSeconds,
+      }));
+
     const reviews = await ctx.db.query("coachWeeklyReviews").collect();
     const previousReviews = reviews
       .filter((r) => r.weekStart < weekStart)
       .sort((a, b) => b.weekStart.localeCompare(a.weekStart))
       .slice(0, 6)
-      .map((r) => ({ weekStart: r.weekStart, stats: r.stats, review: r.review }));
-    return { today, weekStart, stats, previousReviews };
+      .map((r) => ({
+        weekStart: r.weekStart,
+        stats: r.stats,
+        review: r.review,
+        lookahead: r.lookahead,
+        targets: r.targets,
+        reminders: r.reminders,
+      }));
+
+    return {
+      today,
+      weekStart,
+      nextWeekStart,
+      stats,
+      workouts,
+      nextWeekWorkouts,
+      journals,
+      plan: plan
+        ? { name: plan.name, raceDate: plan.raceDate, goalPace: plan.goalPace, startDate: plan.startDate }
+        : null,
+      checkpoints,
+      previousReviews,
+    };
   },
 });
 
 export const upsertWeeklyReview = internalMutation({
-  args: { weekStart: v.string(), stats: WEEK_STATS_VALIDATOR, review: v.string() },
+  args: {
+    weekStart: v.string(),
+    stats: WEEK_STATS_VALIDATOR,
+    review: v.string(),
+    lookahead: v.optional(v.string()),
+    targets: v.optional(v.array(v.string())),
+    reminders: v.optional(v.array(v.string())),
+  },
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("coachWeeklyReviews")
       .withIndex("by_week_start", (q) => q.eq("weekStart", args.weekStart))
       .first();
     if (existing) {
-      await ctx.db.patch(existing._id, { stats: args.stats, review: args.review });
+      await ctx.db.patch(existing._id, {
+        stats: args.stats,
+        review: args.review,
+        lookahead: args.lookahead,
+        targets: args.targets,
+        reminders: args.reminders,
+      });
     } else {
       await ctx.db.insert("coachWeeklyReviews", args);
     }
@@ -229,7 +341,14 @@ export const getCoachContext = internalQuery({
     const weeklyReviews = allReviews
       .sort((a, b) => b.weekStart.localeCompare(a.weekStart))
       .slice(0, 6)
-      .map((r) => ({ weekStart: r.weekStart, stats: r.stats, review: r.review.slice(0, 500) }));
+      .map((r) => ({
+        weekStart: r.weekStart,
+        stats: r.stats,
+        review: r.review.slice(0, 500),
+        lookahead: r.lookahead?.slice(0, 500),
+        targets: r.targets,
+        reminders: r.reminders,
+      }));
 
     return {
       currentWeek,

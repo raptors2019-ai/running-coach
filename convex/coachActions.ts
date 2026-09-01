@@ -9,6 +9,12 @@ import { isRunningType } from "./lib/stravaMapping";
 const MODEL = "claude-opus-5";
 const BETAS = ["server-side-fallback-2026-07-01"];
 
+function addDaysIso(date: string, days: number): string {
+  const d = new Date(date + "T12:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
 function checkPasscode(passcode: string) {
   const expected = process.env.COACH_PASSCODE ?? "Oakville5k";
   if (passcode !== expected) throw new Error("Wrong passcode");
@@ -433,6 +439,50 @@ export const generateBriefing = internalAction({
   },
 });
 
+/**
+ * The weekly review is stored as structured fields, so the model fills a tool
+ * schema rather than free text. Forcing the tool call keeps the shape stable.
+ */
+const WEEKLY_REVIEW_TOOL: Anthropic.Beta.BetaTool = {
+  name: "write_weekly_review",
+  description: "Save the weekly review: a recap of the completed week and a look-ahead for the coming week.",
+  input_schema: {
+    type: "object",
+    properties: {
+      recap: {
+        type: "string",
+        description:
+          "Review of the completed week, written to the athlete. Cover completion and volume vs plan, how the quality session actually went (real paces and HR), and the fitness trend versus previous weeks. Don't itemize every day. 3-6 sentences, plain text.",
+      },
+      lookahead: {
+        type: "string",
+        description:
+          "The coming week in context: what it's for in the block, where it sits relative to the race and checkpoints, and the one session that matters most. 2-4 sentences, plain text.",
+      },
+      targets: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "2-4 concrete, checkable targets for the coming week, each one short line with real numbers (e.g. 'Tuesday 5x800m at 4:45-4:55/km with 2:30 jog'). Ordered by importance.",
+      },
+      reminders: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "1-4 things not to forget this week: guardrails (easy days genuinely easy at 6:45-7:15/km), scheduling (checkpoint date, race logistics, taper rules), recovery, or anything the athlete raised in chat or journal. Each one short line.",
+      },
+    },
+    required: ["recap", "lookahead", "targets", "reminders"],
+  },
+};
+
+type WeeklyReviewOutput = {
+  recap: string;
+  lookahead: string;
+  targets: string[];
+  reminders: string[];
+};
+
 export const generateWeeklyReview = internalAction({
   handler: async (ctx) => {
     try {
@@ -441,51 +491,69 @@ export const generateWeeklyReview = internalAction({
       // Best effort — review what we have
     }
 
-    const input: {
-      today: string;
-      weekStart: string;
-      stats: {
-        runsPlanned: number;
-        runsCompleted: number;
-        plannedKm: number;
-        actualKm: number;
-        qualityTitle?: string;
-        qualityCompleted: boolean;
-        qualityPace?: string;
-        longestRunKm: number;
-      };
-      previousReviews: { weekStart: string; stats: unknown; review: string }[];
-    } = await ctx.runQuery(internal.coach.getWeekReviewInput);
+    const input = await ctx.runQuery(internal.coach.getWeekReviewInput);
+    const daysToRace = input.plan
+      ? Math.ceil(
+          (new Date(input.plan.raceDate + "T00:00:00").getTime() -
+            new Date(input.today + "T00:00:00").getTime()) /
+            86400000
+        )
+      : null;
 
     const client = new Anthropic();
     const response = await createMessage(client, {
       model: MODEL,
       max_tokens: 2048,
       system: [{ type: "text", text: SYSTEM_PROMPT }],
+      tools: [WEEKLY_REVIEW_TOOL],
+      tool_choice: { type: "tool", name: WEEKLY_REVIEW_TOOL.name },
       messages: [
         {
           role: "user",
           content: [
-            `Write the weekly review for the training week starting ${input.weekStart} (Mon-Sun). Today is ${input.today}.`,
-            `This week's app-computed stats (ground truth): ${JSON.stringify(input.stats)}`,
+            `Write the weekly review. Today is ${input.today}${daysToRace !== null ? ` (${daysToRace} days to race)` : ""}.`,
+            `The completed week to review runs ${input.weekStart} to ${addDaysIso(input.weekStart, 6)} (Mon-Sun). The week to look ahead to starts ${input.nextWeekStart}.`,
+            `Plan: ${JSON.stringify(input.plan)}`,
+            `Completed week's app-computed stats (ground truth): ${JSON.stringify(input.stats)}`,
+            `Completed week's workouts (planned and actual): ${JSON.stringify(input.workouts)}`,
+            input.journals.length > 0
+              ? `Journal entries from the completed week: ${JSON.stringify(input.journals)}`
+              : "No journal entries from the completed week.",
+            input.checkpoints.length > 0
+              ? `Checkpoint results (ground truth for the goal): ${JSON.stringify(input.checkpoints)}`
+              : "No checkpoint results recorded yet.",
+            `Coming week's planned workouts: ${JSON.stringify(input.nextWeekWorkouts)}`,
             input.previousReviews.length > 0
               ? `Previous weekly reviews, newest first: ${JSON.stringify(input.previousReviews)}`
               : "This is the first weekly review of the block.",
-            "Cover: volume and completion vs plan, how the quality session went, the pace/fitness trend versus previous weeks, and the single most important thing for next week. Don't itemize every day. 4-8 sentences, plain text, written directly to the athlete.",
+            "Fill in write_weekly_review. The recap looks back only; the lookahead, targets and reminders look forward only. Quote the app-computed numbers, not your own arithmetic. If the completed week has no logged runs, say so in one neutral sentence and spend the recap on the trend instead.",
           ].join("\n"),
         },
       ],
     });
 
     if (response.stop_reason === "refusal") return;
-    const review = textOf(response.content);
-    if (review) {
-      await ctx.runMutation(internal.coach.upsertWeeklyReview, {
-        weekStart: input.weekStart,
-        stats: input.stats,
-        review,
-      });
-    }
+
+    const toolUse = response.content.find(
+      (b): b is Anthropic.Beta.BetaToolUseBlock =>
+        b.type === "tool_use" && b.name === WEEKLY_REVIEW_TOOL.name
+    );
+    const output = toolUse ? (toolUse.input as Partial<WeeklyReviewOutput>) : null;
+    const asLines = (v: unknown): string[] | undefined =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "") : undefined;
+
+    // If the tool call somehow didn't happen, keep whatever text came back as the recap.
+    const review = (output?.recap ?? textOf(response.content)).trim();
+    if (!review) return;
+
+    await ctx.runMutation(internal.coach.upsertWeeklyReview, {
+      weekStart: input.weekStart,
+      stats: input.stats,
+      review,
+      lookahead: output?.lookahead?.trim() || undefined,
+      targets: asLines(output?.targets),
+      reminders: asLines(output?.reminders),
+    });
   },
 });
 

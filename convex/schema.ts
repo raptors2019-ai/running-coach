@@ -105,7 +105,12 @@ export default defineSchema({
       qualityPace: v.optional(v.string()),
       longestRunKm: v.number(),
     }),
+    // Recap of the reviewed (completed) week.
     review: v.string(),
+    // Look-ahead for the following week, written at the same time.
+    lookahead: v.optional(v.string()),
+    targets: v.optional(v.array(v.string())), // things to hit next week
+    reminders: v.optional(v.array(v.string())), // things not to forget
   }).index("by_week_start", ["weekStart"]),
 
   weatherCache: defineTable({
