@@ -1,6 +1,8 @@
 # Spec: Fresh Strava sync, missed-run handling, and checkpoint results
 
-**Date:** 2026-09-01 · **Status:** Proposed
+**Date:** 2026-09-01 · **Status:** Phases 1–2 implemented on this branch (throttle drop,
+`missedAt` detection + briefing adaptation with tools, `checkpoints` table +
+`record_checkpoint` + UI card). Phase 3 (Strava webhook) still proposed.
 
 ## Why this exists
 

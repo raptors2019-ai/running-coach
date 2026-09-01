@@ -7,6 +7,7 @@ import { WeatherWidget } from "@/components/weather-widget";
 import { WeekPreview } from "@/components/week-preview";
 import { UpcomingDays } from "@/components/upcoming-days";
 import { JournalNudgeBanner } from "@/components/journal-nudge-banner";
+import { CheckpointCard } from "@/components/checkpoint-card";
 import { WeatherOptimizerDialog } from "@/components/weather-optimizer-dialog";
 import { Button } from "@/components/ui/button";
 import { useAutoStravaSync } from "@/lib/use-auto-sync";
@@ -65,6 +66,8 @@ export default function HomePage() {
       <JournalNudgeBanner />
 
       {workouts && <UpcomingDays workouts={workouts} />}
+
+      <CheckpointCard />
 
       <Button
         variant="outline"

@@ -194,6 +194,7 @@ export const getCoachContext = internalQuery({
         targetDistance: w.targetDistance,
         targetPace: w.targetPace,
         completed: w.completed,
+        missed: w.missedAt !== undefined && !w.completed ? true : undefined,
         actualDistance: w.actualDistance,
         actualDuration: w.actualDuration,
         actualPace: w.actualPace,
@@ -214,6 +215,16 @@ export const getCoachContext = internalQuery({
 
     const weekStart = mondayOf(today);
     const currentWeek = { weekStart, stats: await computeWeekStats(ctx, weekStart) };
+    const checkpoints = (await ctx.db.query("checkpoints").collect())
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((c) => ({
+        key: c.key,
+        date: c.date,
+        resultSeconds: c.resultSeconds,
+        resultDistanceKm: c.resultDistanceKm,
+        decision: c.decision,
+        goalSeconds: c.goalSeconds,
+      }));
     const allReviews = await ctx.db.query("coachWeeklyReviews").collect();
     const weeklyReviews = allReviews
       .sort((a, b) => b.weekStart.localeCompare(a.weekStart))
@@ -223,6 +234,7 @@ export const getCoachContext = internalQuery({
     return {
       currentWeek,
       weeklyReviews,
+      checkpoints,
       today,
       plan: plan
         ? { name: plan.name, raceDate: plan.raceDate, goalPace: plan.goalPace, startDate: plan.startDate }
@@ -254,10 +266,51 @@ export const getWorkoutsRange = internalQuery({
         targetDistance: w.targetDistance,
         targetPace: w.targetPace,
         completed: w.completed,
+        missed: w.missedAt !== undefined && !w.completed ? true : undefined,
         isUnplanned: w.isUnplanned,
       }));
   },
 });
+
+export const getCheckpoints = query({
+  handler: async (ctx) => {
+    const checkpoints = await ctx.db.query("checkpoints").collect();
+    return checkpoints.sort((a, b) => a.date.localeCompare(b.date));
+  },
+});
+
+export const coachRecordCheckpoint = internalMutation({
+  args: {
+    key: v.union(v.literal("benchmark_2k"), v.literal("race_pace_3k")),
+    date: v.string(),
+    resultSeconds: v.optional(v.number()),
+    resultDistanceKm: v.optional(v.number()),
+    decision: v.string(),
+    goalSeconds: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const workout = await plannedWorkoutOn(ctx, args.date);
+    const row = { ...args, workoutId: workout?._id };
+    const existing = await ctx.db
+      .query("checkpoints")
+      .withIndex("by_key", (q) => q.eq("key", args.key))
+      .first();
+    if (existing) {
+      await ctx.db.patch(existing._id, row);
+      return `Updated checkpoint ${args.key}: ${args.decision}`;
+    }
+    await ctx.db.insert("checkpoints", row);
+    return `Recorded checkpoint ${args.key}: ${args.decision}`;
+  },
+});
+
+/**
+ * The two checkpoint workouts and the race are the plan's spine — the coach
+ * may move them but never overwrite or delete them while uncompleted. This is
+ * the one guardrail enforced in code rather than prompt.
+ */
+const isProtectedWorkout = (w: { type: string; title: string }) =>
+  w.type === "race" || /BENCHMARK|RACE PACE TEST/i.test(w.title);
 
 async function plannedWorkoutOn(ctx: QueryCtx | MutationCtx, date: string) {
   const onDate = await ctx.db
@@ -280,6 +333,9 @@ export const coachUpdateWorkout = internalMutation({
     const workout = await plannedWorkoutOn(ctx, args.date);
     if (!workout) throw new Error(`No planned workout on ${args.date}`);
     if (workout.completed) throw new Error(`Workout on ${args.date} is already completed — history is not editable`);
+    if (args.type !== undefined && args.type !== workout.type && isProtectedWorkout(workout)) {
+      throw new Error(`${workout.title} is a checkpoint/race workout — it can be moved, not replaced`);
+    }
     const { date: _date, ...fields } = args;
     const patch = Object.fromEntries(Object.entries(fields).filter(([, val]) => val !== undefined));
     await ctx.db.patch(workout._id, patch);
@@ -300,12 +356,12 @@ export const coachMoveWorkout = internalMutation({
     const week = (d: string) => (plan ? inferWeekNumber(d, plan.startDate) : 1);
 
     if (to) {
-      // Swap the two days
-      await ctx.db.patch(from._id, { date: args.toDate, dayOfWeek: getDayOfWeek(args.toDate), weekNumber: week(args.toDate) });
-      await ctx.db.patch(to._id, { date: args.fromDate, dayOfWeek: getDayOfWeek(args.fromDate), weekNumber: week(args.fromDate) });
+      // Swap the two days. A rescheduled workout is planned again, not missed.
+      await ctx.db.patch(from._id, { date: args.toDate, dayOfWeek: getDayOfWeek(args.toDate), weekNumber: week(args.toDate), missedAt: undefined });
+      await ctx.db.patch(to._id, { date: args.fromDate, dayOfWeek: getDayOfWeek(args.fromDate), weekNumber: week(args.fromDate), missedAt: undefined });
       return `Swapped ${args.fromDate} (${from.title}) with ${args.toDate} (${to.title})`;
     }
-    await ctx.db.patch(from._id, { date: args.toDate, dayOfWeek: getDayOfWeek(args.toDate), weekNumber: week(args.toDate) });
+    await ctx.db.patch(from._id, { date: args.toDate, dayOfWeek: getDayOfWeek(args.toDate), weekNumber: week(args.toDate), missedAt: undefined });
     return `Moved ${from.title} from ${args.fromDate} to ${args.toDate}`;
   },
 });
@@ -316,6 +372,9 @@ export const coachSetRestDay = internalMutation({
     const workout = await plannedWorkoutOn(ctx, args.date);
     if (!workout) throw new Error(`No planned workout on ${args.date}`);
     if (workout.completed) throw new Error(`Workout on ${args.date} is already completed`);
+    if (isProtectedWorkout(workout)) {
+      throw new Error(`${workout.title} is a checkpoint/race workout — it can be moved, not dropped`);
+    }
     await ctx.db.patch(workout._id, {
       type: "rest",
       title: "Rest Day",
@@ -382,6 +441,7 @@ export const coachRematchDate = internalMutation({
           avgHeartRate: undefined,
           stravaActivityId: undefined,
           notes: undefined,
+          missedAt: undefined,
           ...(w.originalType ? { type: w.originalType, originalType: undefined } : {}),
         });
         cleared++;

@@ -40,6 +40,9 @@ export default defineSchema({
     stravaActivityId: v.optional(v.string()),
     originalType: v.optional(v.string()),
     isUnplanned: v.optional(v.boolean()),
+    // Set by the morning check when a planned run's day passed with nothing
+    // logged; cleared automatically if a later sync matches an activity.
+    missedAt: v.optional(v.number()),
   }).index("by_date", ["date"])
     .index("by_plan", ["planId"])
     .index("by_week", ["planId", "weekNumber"]),
@@ -67,6 +70,18 @@ export default defineSchema({
     athleteId: v.string(),
     lastSyncAt: v.optional(v.number()),
   }),
+
+  // Outcomes of the plan's decision-point workouts. The plan is "decided by
+  // the checkpoints", so the decision gets a row, not just a sentence in notes.
+  checkpoints: defineTable({
+    key: v.union(v.literal("benchmark_2k"), v.literal("race_pace_3k")),
+    date: v.string(), // YYYY-MM-DD the checkpoint was run
+    workoutId: v.optional(v.id("workouts")),
+    resultSeconds: v.optional(v.number()),
+    resultDistanceKm: v.optional(v.number()),
+    decision: v.string(), // e.g. "Passed — chase 24:30"
+    goalSeconds: v.optional(v.number()), // updated race goal, if the result changes it
+  }).index("by_key", ["key"]),
 
   coachBriefings: defineTable({
     date: v.string(), // YYYY-MM-DD the briefing is for

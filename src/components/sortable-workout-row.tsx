@@ -9,7 +9,7 @@ import { WorkoutTypeBadge } from "./workout-type-badge";
 import { formatDistance, getLocalDateString } from "@/lib/pace-utils";
 import { WORKOUT_TYPE_LABELS } from "@/lib/constants";
 import { format, parseISO } from "date-fns";
-import { CheckCircle2, GripVertical, Pencil, X, Check } from "lucide-react";
+import { CheckCircle2, GripVertical, Pencil, X, Check, XCircle } from "lucide-react";
 import { useState } from "react";
 
 interface SortableWorkoutRowProps {
@@ -107,7 +107,7 @@ export function SortableWorkoutRow({ workout, isToday, onSelect }: SortableWorko
       style={style}
       className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 transition-colors hover:bg-muted/70 ${
         isToday ? "bg-blue-50 border border-blue-200" : ""
-      } ${workout.completed ? "opacity-75" : ""}`}
+      } ${workout.completed ? "opacity-75" : ""} ${!workout.completed && workout.missedAt ? "opacity-60" : ""}`}
     >
       <button
         className="touch-none cursor-grab active:cursor-grabbing p-0.5 -ml-1 text-muted-foreground/50 hover:text-muted-foreground"
@@ -122,6 +122,8 @@ export function SortableWorkoutRow({ workout, isToday, onSelect }: SortableWorko
       >
         {workout.completed ? (
           <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+        ) : workout.missedAt ? (
+          <XCircle className="h-4 w-4 text-amber-500 shrink-0" />
         ) : (
           <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 shrink-0" />
         )}
@@ -130,6 +132,11 @@ export function SortableWorkoutRow({ workout, isToday, onSelect }: SortableWorko
         </span>
         <WorkoutTypeBadge type={workout.type} className="shrink-0" />
         <span className="truncate">{workout.title}</span>
+        {!workout.completed && workout.missedAt && (
+          <span className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 shrink-0">
+            Missed
+          </span>
+        )}
         {workout.targetDistance && (
           <span className="ml-auto text-muted-foreground shrink-0">
             {formatDistance(workout.targetDistance)}

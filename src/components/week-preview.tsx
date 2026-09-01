@@ -5,7 +5,7 @@ import { WORKOUT_TYPE_COLORS, WORKOUT_TYPE_LABELS, PLAN_START_DATE } from "@/lib
 import { format, parseISO, addDays, subDays } from "date-fns";
 import { getLocalDateString, formatDistance } from "@/lib/pace-utils";
 import { isNonRunningType } from "@/lib/constants";
-import { CheckCircle2, ChevronLeft, ChevronRight, MapPin, Timer, Zap } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, MapPin, Timer, XCircle, Zap } from "lucide-react";
 import { WorkoutDetailDialog } from "./workout-detail-dialog";
 import { WorkoutTypeBadge } from "./workout-type-badge";
 import { useState } from "react";
@@ -138,6 +138,9 @@ export function WeekPreview({ workouts }: WeekPreviewProps) {
               {planned?.completed && (
                 <CheckCircle2 className="absolute -top-1.5 left-1/2 -translate-x-1/2 h-3.5 w-3.5 text-green-600 bg-white rounded-full" />
               )}
+              {planned && !planned.completed && planned.missedAt && (
+                <XCircle className="absolute -top-1.5 left-1/2 -translate-x-1/2 h-3.5 w-3.5 text-amber-500 bg-white rounded-full" />
+              )}
               {planned && (
                 <span className="text-[8px] mt-0.5 text-center leading-tight truncate w-full">
                   {WORKOUT_TYPE_LABELS[type] || type}
@@ -163,6 +166,10 @@ export function WeekPreview({ workouts }: WeekPreviewProps) {
             </div>
             {selectedPlanned.completed ? (
               <CheckCircle2 className="h-5 w-5 text-green-600" />
+            ) : selectedPlanned.missedAt ? (
+              <span className="flex items-center gap-1 text-xs font-medium text-amber-600">
+                <XCircle className="h-4 w-4" /> Missed
+              </span>
             ) : (
               <span className="text-xs text-muted-foreground">
                 {format(parseISO(selectedDate), "EEEE, MMM d")}

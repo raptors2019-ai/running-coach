@@ -27,47 +27,73 @@ export const recordBenchmarkResult = mutation({
       ?? rows.find((w) => !w.isUnplanned)
       ?? rows[0];
 
+    let workoutId = benchmark?._id;
+    let workoutMsg: string;
     if (benchmark) {
       if (benchmark.notes?.includes("Checkpoint 1")) {
-        return "Benchmark result already recorded";
+        workoutMsg = "Benchmark workout already recorded";
+      } else {
+        await ctx.db.patch(benchmark._id, {
+          completed: true,
+          missedAt: undefined,
+          // A successful Strava sync already holds the real numbers — keep them.
+          ...(benchmark.stravaActivityId
+            ? {}
+            : {
+                actualDistance: DISTANCE_KM,
+                actualDuration: DURATION_S,
+                actualPace: formatPaceWithUnit(DISTANCE_KM, DURATION_S),
+                stravaActivityId: STRAVA_ID,
+              }),
+          notes: benchmark.notes ? `${benchmark.notes}\n${NOTE}` : NOTE,
+        });
+        workoutMsg = `Benchmark result recorded on existing ${benchmark.title}`;
       }
-      await ctx.db.patch(benchmark._id, {
+    } else {
+      const plan = await ctx.db.query("trainingPlan").first();
+      if (!plan) throw new Error("No training plan found");
+      workoutId = await ctx.db.insert("workouts", {
+        planId: plan._id,
+        date: DATE,
+        weekNumber: 1,
+        dayOfWeek: "Thu",
+        type: "race_pace",
+        title: "BENCHMARK: 2K Time Trial",
+        description:
+          "WU 1.5km + 2km hard (controlled all-out) + CD 1km. This calibrates the whole plan.",
+        targetDistance: 4.5,
+        targetPace: "4:45-5:15",
         completed: true,
-        // A successful Strava sync already holds the real numbers — keep them.
-        ...(benchmark.stravaActivityId
-          ? {}
-          : {
-              actualDistance: DISTANCE_KM,
-              actualDuration: DURATION_S,
-              actualPace: formatPaceWithUnit(DISTANCE_KM, DURATION_S),
-              stravaActivityId: STRAVA_ID,
-            }),
-        notes: benchmark.notes ? `${benchmark.notes}\n${NOTE}` : NOTE,
+        actualDistance: DISTANCE_KM,
+        actualDuration: DURATION_S,
+        actualPace: formatPaceWithUnit(DISTANCE_KM, DURATION_S),
+        stravaActivityId: STRAVA_ID,
+        notes: NOTE,
       });
-      return `Benchmark result recorded on existing ${benchmark.title}`;
+      workoutMsg = "Benchmark workout created with result";
     }
 
-    const plan = await ctx.db.query("trainingPlan").first();
-    if (!plan) throw new Error("No training plan found");
-    await ctx.db.insert("workouts", {
-      planId: plan._id,
+    // Structured checkpoint record — what the coach and UI branch on.
+    const checkpoint = {
+      key: "benchmark_2k" as const,
       date: DATE,
-      weekNumber: 1,
-      dayOfWeek: "Thu",
-      type: "race_pace",
-      title: "BENCHMARK: 2K Time Trial",
-      description:
-        "WU 1.5km + 2km hard (controlled all-out) + CD 1km. This calibrates the whole plan.",
-      targetDistance: 4.5,
-      targetPace: "4:45-5:15",
-      completed: true,
-      actualDistance: DISTANCE_KM,
-      actualDuration: DURATION_S,
-      actualPace: formatPaceWithUnit(DISTANCE_KM, DURATION_S),
-      stravaActivityId: STRAVA_ID,
-      notes: NOTE,
-    });
-    return "Benchmark workout created with result";
+      workoutId,
+      resultSeconds: DURATION_S,
+      resultDistanceKm: DISTANCE_KM,
+      decision: "Passed — chase 24:30 (9:12 for 1.98 km, bar was 9:50). No retest needed.",
+      goalSeconds: 1470, // 24:30
+    };
+    const existingCp = await ctx.db
+      .query("checkpoints")
+      .withIndex("by_key", (q) => q.eq("key", "benchmark_2k"))
+      .first();
+    if (existingCp) {
+      await ctx.db.patch(existingCp._id, checkpoint);
+    } else {
+      await ctx.db.insert("checkpoints", checkpoint);
+    }
+
+    return `${workoutMsg}; checkpoint benchmark_2k recorded`;
   },
 });
 
