@@ -4,10 +4,22 @@ export function getLocalDateString(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-/** Convert "M:SS" pace string to total seconds */
+/**
+ * Convert a pace string to total seconds per km. Tolerates the "/km" unit
+ * suffix that Strava-synced workouts carry ("7:17/km") as well as the plain
+ * "7:17" form used by manual entries. Returns NaN when no M:SS token exists.
+ */
 export function paceToSeconds(pace: string): number {
-  const [min, sec] = pace.split(":").map(Number);
-  return min * 60 + sec;
+  const m = /(\d+):(\d{2})/.exec(pace ?? "");
+  if (!m) return NaN;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+/** Render a stored pace ("7:17" or "7:17/km") with exactly one "/km" unit. */
+export function formatPaceDisplay(pace: string): string {
+  const seconds = paceToSeconds(pace);
+  if (Number.isNaN(seconds)) return pace;
+  return `${secondsToPace(seconds)}/km`;
 }
 
 /** Convert total seconds to "M:SS" pace string */

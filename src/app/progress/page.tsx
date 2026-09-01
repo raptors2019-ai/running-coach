@@ -3,6 +3,7 @@
 import { PaceChart } from "@/components/pace-chart";
 import { WeeklyVolumeChart } from "@/components/weekly-volume-chart";
 import { RacePrediction } from "@/components/race-prediction";
+import { RecentRuns } from "@/components/recent-runs";
 import { CountdownBadge } from "@/components/countdown-badge";
 
 export default function ProgressPage() {
@@ -13,6 +14,7 @@ export default function ProgressPage() {
         <CountdownBadge />
       </div>
       <RacePrediction />
+      <RecentRuns />
       <PaceChart />
       <WeeklyVolumeChart />
     </div>

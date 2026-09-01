@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { WorkoutTypeBadge } from "./workout-type-badge";
 import { ManualEntryForm } from "./manual-entry-form";
-import { formatDistance } from "@/lib/pace-utils";
+import { formatDistance, formatPaceDisplay } from "@/lib/pace-utils";
 import { format } from "date-fns";
 import { isNonRunningType } from "@/lib/constants";
 import { CheckCircle2, MapPin, Timer, Zap, Undo2 } from "lucide-react";
@@ -103,7 +103,7 @@ export function WorkoutDetailDialog({
                 {workout.actualDistance && (
                   <div>Distance: {formatDistance(workout.actualDistance)}</div>
                 )}
-                {workout.actualPace && <div>Pace: {workout.actualPace}/km</div>}
+                {workout.actualPace && <div>Pace: {formatPaceDisplay(workout.actualPace)}</div>}
                 {workout.actualDuration && (
                   <div>
                     Duration: {Math.floor(workout.actualDuration / 60)}:{(workout.actualDuration % 60).toString().padStart(2, "0")}

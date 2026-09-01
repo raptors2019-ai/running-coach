@@ -6,7 +6,7 @@ import { Doc } from "../../convex/_generated/dataModel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WorkoutTypeBadge } from "./workout-type-badge";
 import { WorkoutDetailDialog } from "./workout-detail-dialog";
-import { formatDistance, getLocalDateString } from "@/lib/pace-utils";
+import { formatDistance, getLocalDateString, formatPaceDisplay } from "@/lib/pace-utils";
 import { format } from "date-fns";
 import { isNonRunningType } from "@/lib/constants";
 import { CheckCircle2, Circle, MapPin, Timer, Zap } from "lucide-react";
@@ -33,7 +33,7 @@ function UnplannedWorkoutCard({ workout }: { workout: Doc<"workouts"> }) {
             {workout.actualDistance && (
               <span>{formatDistance(workout.actualDistance)}</span>
             )}
-            {workout.actualPace && <span>{workout.actualPace}</span>}
+            {workout.actualPace && <span>{formatPaceDisplay(workout.actualPace)}</span>}
             {workout.actualDuration && (
               <span>
                 {Math.floor(workout.actualDuration / 60)}:{(workout.actualDuration % 60).toString().padStart(2, "0")}
@@ -137,7 +137,7 @@ export function DailyWorkoutCard() {
                 {plannedWorkout.actualDistance && (
                   <span>{formatDistance(plannedWorkout.actualDistance)}</span>
                 )}
-                {plannedWorkout.actualPace && <span>{plannedWorkout.actualPace}/km</span>}
+                {plannedWorkout.actualPace && <span>{formatPaceDisplay(plannedWorkout.actualPace)}</span>}
                 {plannedWorkout.actualDuration && (
                   <span>
                     {Math.floor(plannedWorkout.actualDuration / 60)}:{(plannedWorkout.actualDuration % 60).toString().padStart(2, "0")}

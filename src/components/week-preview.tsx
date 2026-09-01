@@ -3,7 +3,7 @@
 import { Doc } from "../../convex/_generated/dataModel";
 import { WORKOUT_TYPE_COLORS, WORKOUT_TYPE_LABELS, PLAN_START_DATE } from "@/lib/constants";
 import { format, parseISO, addDays, subDays } from "date-fns";
-import { getLocalDateString, formatDistance } from "@/lib/pace-utils";
+import { getLocalDateString, formatDistance, formatPaceDisplay } from "@/lib/pace-utils";
 import { isNonRunningType } from "@/lib/constants";
 import { CheckCircle2, ChevronLeft, ChevronRight, MapPin, Timer, XCircle, Zap } from "lucide-react";
 import { WorkoutDetailDialog } from "./workout-detail-dialog";
@@ -208,7 +208,7 @@ export function WeekPreview({ workouts }: WeekPreviewProps) {
                 {selectedPlanned.actualDistance && (
                   <span>{formatDistance(selectedPlanned.actualDistance)}</span>
                 )}
-                {selectedPlanned.actualPace && <span>{selectedPlanned.actualPace}/km</span>}
+                {selectedPlanned.actualPace && <span>{formatPaceDisplay(selectedPlanned.actualPace)}</span>}
                 {selectedPlanned.actualDuration && (
                   <span>
                     {selectedPlanned.actualDuration >= 3600
