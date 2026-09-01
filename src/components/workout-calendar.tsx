@@ -12,7 +12,9 @@ export function WorkoutCalendar() {
   const allWorkouts = useQuery(api.workouts.getAllWorkouts);
   const plan = useQuery(api.workouts.getTrainingPlan);
   const swapWorkoutDates = useMutation(api.workouts.swapWorkoutDates);
-  const [selectedWorkout, setSelectedWorkout] = useState<Doc<"workouts"> | null>(null);
+  // Track the id, not the row: the dialog then shows live data after a
+  // completion or make-up, and closes itself if the row goes away.
+  const [selectedId, setSelectedId] = useState<Id<"workouts"> | null>(null);
 
   const pointerSensor = useSensor(PointerSensor, {
     activationConstraint: { distance: 8 },
@@ -35,6 +37,7 @@ export function WorkoutCalendar() {
   // Scope to the current plan — kept history from previous race blocks
   // shares week numbers but belongs to an older planId.
   const workouts = allWorkouts.filter((w) => w.planId === plan._id);
+  const selectedWorkout = selectedId ? workouts.find((w) => w._id === selectedId) ?? null : null;
 
   const weeks = workouts.reduce(
     (acc, workout) => {
@@ -77,7 +80,7 @@ export function WorkoutCalendar() {
               weekNum={Number(weekNum)}
               weekLabel={weekLabels[Number(weekNum)] || `Week ${weekNum}`}
               workouts={weekWorkouts}
-              onSelectWorkout={setSelectedWorkout}
+              onSelectWorkout={(w) => setSelectedId(w._id)}
             />
           ))}
 
@@ -85,7 +88,7 @@ export function WorkoutCalendar() {
           <WorkoutDetailDialog
             workout={selectedWorkout}
             open={!!selectedWorkout}
-            onOpenChange={(open) => !open && setSelectedWorkout(null)}
+            onOpenChange={(open) => !open && setSelectedId(null)}
           />
         )}
       </div>

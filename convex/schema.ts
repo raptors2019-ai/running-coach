@@ -43,6 +43,9 @@ export default defineSchema({
     // Set by the morning check when a planned run's day passed with nothing
     // logged; cleared automatically if a later sync matches an activity.
     missedAt: v.optional(v.number()),
+    // Date the workout was actually done when it differs from `date` — a
+    // missed run made up later (or done early) keeps its slot in the plan.
+    completedDate: v.optional(v.string()),
   }).index("by_date", ["date"])
     .index("by_plan", ["planId"])
     .index("by_week", ["planId", "weekNumber"]),

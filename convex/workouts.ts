@@ -1,5 +1,6 @@
 import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
+import { canCountRunAsPlanned, makeUpCandidates, shortDate } from "./lib/makeUp";
 import { isRunningType, formatPaceWithUnit, typeAffinityScore, inferWeekNumber, getDayOfWeek, parseTargetPaceSeconds, segmentRole } from "./lib/stravaMapping";
 
 export const getTrainingPlan = query({
@@ -157,6 +158,7 @@ export const unmarkWorkoutComplete = mutation({
       notes: undefined,
       stravaActivityId: undefined,
       missedAt: undefined,
+      completedDate: undefined,
     });
   },
 });
@@ -377,5 +379,55 @@ export const autoCompleteFromActivities = internalMutation({
     }
 
     return { autoCompleted, alreadyDone, newActivitiesCreated };
+  },
+});
+
+/**
+ * Runs that could be paired with this workout: for an extra (unplanned) run,
+ * the undone planned runs nearby it could count as; for an undone planned
+ * run, the extra runs that could cover it. Closest dates first.
+ */
+export const getMakeUpOptions = query({
+  args: { workoutId: v.id("workouts") },
+  handler: async (ctx, args) => {
+    const workout = await ctx.db.get(args.workoutId);
+    if (!workout) return [];
+    const all = await ctx.db.query("workouts").collect();
+    return makeUpCandidates(workout, all);
+  },
+});
+
+/**
+ * Credit an extra (Strava) run to the planned run it stood in for — Sunday's
+ * long run done on Monday. The planned row keeps its slot in the plan and
+ * takes the run's actual stats plus the day it really happened; the extra
+ * row is removed. The Strava activity id moves across, so a re-sync doesn't
+ * re-import it.
+ */
+export const linkRunToPlanned = mutation({
+  args: { runId: v.id("workouts"), plannedId: v.id("workouts") },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    const planned = await ctx.db.get(args.plannedId);
+    if (!run || !planned) throw new Error("Workout not found");
+    if (!canCountRunAsPlanned(planned, run)) {
+      throw new Error("This run can't be counted as that workout");
+    }
+    const sameDay = run.date === planned.date;
+    const note = sameDay
+      ? `Logged from ${run.description}.`
+      : `Done ${shortDate(run.date)} instead of ${shortDate(planned.date)} (${run.description}).`;
+    await ctx.db.patch(planned._id, {
+      completed: true,
+      missedAt: undefined,
+      completedDate: sameDay ? undefined : run.date,
+      actualDistance: run.actualDistance,
+      actualDuration: run.actualDuration,
+      actualPace: run.actualPace,
+      avgHeartRate: run.avgHeartRate,
+      stravaActivityId: run.stravaActivityId,
+      notes: [planned.notes, note].filter(Boolean).join(" "),
+    });
+    await ctx.db.delete(run._id);
   },
 });

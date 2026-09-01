@@ -561,6 +561,7 @@ export const coachRematchDate = internalMutation({
           stravaActivityId: undefined,
           notes: undefined,
           missedAt: undefined,
+          completedDate: undefined,
           ...(w.originalType ? { type: w.originalType, originalType: undefined } : {}),
         });
         cleared++;

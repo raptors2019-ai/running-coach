@@ -65,15 +65,17 @@ export default function HomePage() {
       {stats && (
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-muted/50 rounded-lg p-3 text-center">
-            <div className="text-2xl font-bold">{stats.completedCount}/{stats.totalCount}</div>
-            <div className="text-xs text-muted-foreground">This Week</div>
+            <div className="text-2xl font-bold">{stats.runsDone}/{stats.runsPlanned}</div>
+            <div className="text-xs text-muted-foreground">
+              Runs this week{stats.extraRuns > 0 && ` · +${stats.extraRuns} extra`}
+            </div>
           </div>
           <div className="bg-muted/50 rounded-lg p-3 text-center">
             <div className="text-2xl font-bold">
-              {formatDistance(stats.completedKm)}
+              {formatDistance(stats.actualKm)}
             </div>
             <div className="text-xs text-muted-foreground">
-              of {formatDistance(stats.plannedKm)}
+              of {formatDistance(stats.plannedKm)} planned
             </div>
           </div>
         </div>

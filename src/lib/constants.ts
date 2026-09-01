@@ -35,6 +35,8 @@ export const WORKOUT_TYPE_COLORS: Record<string, string> = {
   race: "bg-purple-100 text-purple-800 border-purple-200",
   shakeout: "bg-teal-100 text-teal-800 border-teal-200",
   race_pace: "bg-amber-100 text-amber-800 border-amber-200",
+  // Strava-synced runs that weren't on the plan arrive as a generic "run".
+  run: "bg-emerald-100 text-emerald-800 border-emerald-200",
 };
 
 export const WORKOUT_TYPE_LABELS: Record<string, string> = {
@@ -50,6 +52,7 @@ export const WORKOUT_TYPE_LABELS: Record<string, string> = {
   race: "Race Day",
   shakeout: "Shakeout",
   race_pace: "Race Pace",
+  run: "Run",
 };
 
 const NON_RUNNING_TYPES = new Set(["rest", "cross_training", "upper_body", "lower_body", "swim"]);
@@ -58,7 +61,13 @@ export function isNonRunningType(type: string): boolean {
   return NON_RUNNING_TYPES.has(type);
 }
 
+/** Named run types the plan uses. Strava's generic "run" is covered by isRunType. */
 export const RUNNING_TYPES = new Set(["easy", "tempo", "intervals", "long", "race", "shakeout", "race_pace"]);
+
+/** True for any run: a planned run type or a Strava-synced unplanned "run". */
+export function isRunType(type: string): boolean {
+  return type === "run" || RUNNING_TYPES.has(type);
+}
 
 export const MIN_RUNS_PER_WEEK: Record<number, number> = {
   1: 4,
