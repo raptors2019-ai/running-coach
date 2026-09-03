@@ -24,7 +24,7 @@ const TRAINING_PLAN: WorkoutData[] = [
 
   // Week 2: Raw Speed (Aug 31 - Sep 6) — ~19 km
   { date: "2026-08-31", weekNumber: 2, dayOfWeek: "Mon", type: "upper_body", title: "Upper Body", description: "Upper body lift. No running." },
-  { date: "2026-09-01", weekNumber: 2, dayOfWeek: "Tue", type: "intervals", title: "Speed: 8x400m", description: "WU 1.5km + 8x400m @ 4:45-4:55/km (90s jog rest) + CD 1km. Short and fast — each rep is under 2 minutes of work. Hit the pace, don't hero the first two reps.", targetDistance: 7, targetPace: "4:45-4:55", intervals: [{ distance: "400m", pace: "4:45-4:55/km", rest: "90s jog", reps: 8 }] },
+  { date: "2026-09-01", weekNumber: 2, dayOfWeek: "Tue", type: "intervals", title: "Speed: 8x400m", description: "WU 1.5km + 8x400m @ 4:45-4:55/km (90s jog recovery between reps) + CD 1km. Short and fast — each rep is under 2 minutes of work. Hit the pace, don't hero the first two reps.", targetDistance: 7, targetPace: "4:45-4:55", intervals: [{ distance: "400m", pace: "4:45-4:55/km", rest: "90s jog", reps: 8 }] },
   { date: "2026-09-02", weekNumber: 2, dayOfWeek: "Wed", type: "lower_body", title: "Lower Body", description: "Lower body lift, day after speed — hard days hard, easy days easy." },
   { date: "2026-09-03", weekNumber: 2, dayOfWeek: "Thu", type: "easy", title: "Zone 2 Run", description: "5km @ 6:45-7:15. Legs may feel Wednesday's lift — that's fine, keep it genuinely easy.", targetDistance: 5, targetPace: "6:45-7:15" },
   { date: "2026-09-04", weekNumber: 2, dayOfWeek: "Fri", type: "rest", title: "Rest Day", description: "Full rest or easy swim." },
@@ -33,7 +33,7 @@ const TRAINING_PLAN: WorkoutData[] = [
 
   // Week 3: VO2max (Sep 7-13) — ~20 km
   { date: "2026-09-07", weekNumber: 3, dayOfWeek: "Mon", type: "upper_body", title: "Upper Body", description: "Upper body lift. No running." },
-  { date: "2026-09-08", weekNumber: 3, dayOfWeek: "Tue", type: "intervals", title: "VO2max: 5x800m", description: "WU 1.5km + 5x800m @ 4:50-5:00/km (2:30 jog rest) + CD 1km. Twice the rep length of last week at nearly the same pace — this is the engine-builder for a 5K.", targetDistance: 7, targetPace: "4:50-5:00", intervals: [{ distance: "800m", pace: "4:50-5:00/km", rest: "2:30 jog", reps: 5 }] },
+  { date: "2026-09-08", weekNumber: 3, dayOfWeek: "Tue", type: "intervals", title: "VO2max: 5x800m", description: "WU 1.5km + 5x800m @ 4:50-5:00/km (2:30 jog recovery between reps) + CD 1km. Twice the rep length of last week at nearly the same pace — this is the engine-builder for a 5K.", targetDistance: 7, targetPace: "4:50-5:00", intervals: [{ distance: "800m", pace: "4:50-5:00/km", rest: "2:30 jog", reps: 5 }] },
   { date: "2026-09-09", weekNumber: 3, dayOfWeek: "Wed", type: "lower_body", title: "Lower Body", description: "Lower body lift, day after speed." },
   { date: "2026-09-10", weekNumber: 3, dayOfWeek: "Thu", type: "easy", title: "Zone 2 Run + Strides", description: "5km @ 6:45-7:15 + 4x100m strides at the end.", targetDistance: 5, targetPace: "6:45-7:15" },
   { date: "2026-09-11", weekNumber: 3, dayOfWeek: "Fri", type: "rest", title: "Rest Day", description: "Full rest or easy swim." },
@@ -51,7 +51,7 @@ const TRAINING_PLAN: WorkoutData[] = [
 
   // Week 5: Sharpen (Sep 21-27) — ~18 km
   { date: "2026-09-21", weekNumber: 5, dayOfWeek: "Mon", type: "upper_body", title: "Upper Body", description: "Upper body lift. No running." },
-  { date: "2026-09-22", weekNumber: 5, dayOfWeek: "Tue", type: "tempo", title: "The April Special: 4x1km", description: "WU 1.5km + 4x1km @ 4:50-5:00/km (90s jog rest) + CD 1km. Same structure that got you to Foxtrail fitness, at 5K pace. Hold goal pace under fatigue — this is the race in disguise.", targetDistance: 7.5, targetPace: "4:50-5:00", intervals: [{ distance: "1000m", pace: "4:50-5:00/km", rest: "90s jog", reps: 4 }] },
+  { date: "2026-09-22", weekNumber: 5, dayOfWeek: "Tue", type: "tempo", title: "The April Special: 4x1km", description: "WU 1.5km + 4x1km @ 4:50-5:00/km (90s jog recovery between reps) + CD 1km. Same structure that got you to Foxtrail fitness, at 5K pace. Hold goal pace under fatigue — this is the race in disguise.", targetDistance: 7.5, targetPace: "4:50-5:00", intervals: [{ distance: "1000m", pace: "4:50-5:00/km", rest: "90s jog", reps: 4 }] },
   { date: "2026-09-23", weekNumber: 5, dayOfWeek: "Wed", type: "lower_body", title: "Lower Body", description: "Lower body lift — LAST hard leg day before the race." },
   { date: "2026-09-24", weekNumber: 5, dayOfWeek: "Thu", type: "easy", title: "Zone 2 Run + Strides", description: "5km @ 6:45-7:15 + 4x100m strides.", targetDistance: 5, targetPace: "6:45-7:15" },
   { date: "2026-09-25", weekNumber: 5, dayOfWeek: "Fri", type: "rest", title: "Rest Day", description: "Full rest or easy swim." },

@@ -87,7 +87,7 @@ export function WorkoutDetailDialog({
               </div>
               {workout.intervals.map((interval, i) => (
                 <div key={i} className="text-sm">
-                  {interval.reps}x {interval.distance} @ {interval.pace} ({interval.rest} rest)
+                  {interval.reps}x {interval.distance} @ {interval.pace}, {interval.rest} recovery after each rep
                 </div>
               ))}
             </div>
