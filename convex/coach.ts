@@ -2,6 +2,7 @@ import { query, internalQuery, internalMutation, type QueryCtx, type MutationCtx
 import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { inferWeekNumber, getDayOfWeek, isRunningType } from "./lib/stravaMapping";
+import { splitsForPrompt } from "./lib/splitParsing";
 
 function todayToronto(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Toronto" });
@@ -171,6 +172,11 @@ export const getWeekReviewInput = internalQuery({
       .sort((a, b) => a.date.localeCompare(b.date))
       .map((j) => ({ date: j.date, mood: j.mood, notes: j.userNotes }));
 
+    const splitUploads = (await ctx.db.query("splitUploads").collect())
+      .filter((u) => u.status === "ready" && u.date >= weekStart && u.date <= weekEnd)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(splitsForPrompt);
+
     const plan = await ctx.db.query("trainingPlan").first();
     const checkpoints = (await ctx.db.query("checkpoints").collect())
       .sort((a, b) => a.date.localeCompare(b.date))
@@ -205,6 +211,7 @@ export const getWeekReviewInput = internalQuery({
       workouts,
       nextWeekWorkouts,
       journals,
+      splitUploads,
       plan: plan
         ? { name: plan.name, raceDate: plan.raceDate, goalPace: plan.goalPace, startDate: plan.startDate }
         : null,
@@ -321,6 +328,14 @@ export const getCoachContext = internalQuery({
       .slice(0, 7)
       .map((j) => ({ date: j.date, mood: j.mood, notes: j.userNotes }));
 
+    // Per-split detail for the same window. Strava gives whole-activity
+    // numbers only, so for an interval session these lines are the only
+    // record of what each rep actually ran.
+    const splitUploads = (await ctx.db.query("splitUploads").collect())
+      .filter((u) => u.status === "ready" && u.date >= startStr)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(splitsForPrompt);
+
     const messages = await ctx.db.query("coachMessages").order("asc").collect();
     const briefings = await ctx.db.query("coachBriefings").collect();
     const latestBriefing = briefings.sort((a, b) => b.date.localeCompare(a.date))[0];
@@ -354,6 +369,7 @@ export const getCoachContext = internalQuery({
       currentWeek,
       weeklyReviews,
       checkpoints,
+      splitUploads,
       today,
       plan: plan
         ? { name: plan.name, raceDate: plan.raceDate, goalPace: plan.goalPace, startDate: plan.startDate }

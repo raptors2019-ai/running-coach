@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Doc } from "../../convex/_generated/dataModel";
 import {
@@ -15,7 +15,9 @@ import { ManualEntryForm } from "./manual-entry-form";
 import { formatDistance, formatPaceDisplay } from "@/lib/pace-utils";
 import { format } from "date-fns";
 import { isNonRunningType } from "@/lib/constants";
-import { CheckCircle2, MapPin, Timer, Zap, Undo2 } from "lucide-react";
+import { CheckCircle2, MapPin, Timer, Zap, Undo2, ListOrdered } from "lucide-react";
+import { SplitsTable } from "./splits-table";
+import Link from "next/link";
 import { useState } from "react";
 
 interface WorkoutDetailDialogProps {
@@ -30,6 +32,8 @@ export function WorkoutDetailDialog({
   onOpenChange,
 }: WorkoutDetailDialogProps) {
   const [showEntryForm, setShowEntryForm] = useState(false);
+  const splitUploads = useQuery(api.splits.getUploadsForDate, { date: workout.date });
+  const readySplits = (splitUploads ?? []).filter((u) => u.status === "ready");
   const markComplete = useMutation(api.workouts.markWorkoutComplete);
   const unmarkComplete = useMutation(api.workouts.unmarkWorkoutComplete);
 
@@ -117,6 +121,26 @@ export function WorkoutDetailDialog({
             </div>
           )}
 
+          {readySplits.length > 0 && (
+            <div className="space-y-3">
+              {readySplits.map((upload) => (
+                <div key={upload._id} className="bg-muted/50 rounded-lg p-3">
+                  <div className="text-sm font-medium mb-1 flex items-center gap-1">
+                    <ListOrdered className="h-3.5 w-3.5" />
+                    Splits
+                    {upload.source && (
+                      <span className="font-normal text-muted-foreground">· {upload.source}</span>
+                    )}
+                  </div>
+                  {upload.workReps && (
+                    <p className="text-sm font-medium text-primary mb-2">{upload.workReps}</p>
+                  )}
+                  <SplitsTable splits={upload.splits ?? []} />
+                </div>
+              ))}
+            </div>
+          )}
+
           {!workout.completed && !isRestDay && !showEntryForm && (
             <div className="flex gap-2">
               <Button onClick={handleQuickComplete} className="flex-1">
@@ -137,6 +161,15 @@ export function WorkoutDetailDialog({
             <Button onClick={handleQuickComplete} className="w-full">
               <CheckCircle2 className="h-4 w-4 mr-1" />
               Mark as Done
+            </Button>
+          )}
+
+          {workout.completed && !isRestDay && readySplits.length === 0 && (
+            <Button asChild variant="outline" size="sm" className="w-full">
+              <Link href="/splits">
+                <ListOrdered className="h-3.5 w-3.5 mr-1" />
+                Add splits from your watch
+              </Link>
             </Button>
           )}
 

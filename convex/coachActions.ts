@@ -5,19 +5,13 @@ import { internal, api } from "./_generated/api";
 import { v } from "convex/values";
 import Anthropic from "@anthropic-ai/sdk";
 import { isRunningType } from "./lib/stravaMapping";
-
-const MODEL = "claude-opus-5";
-const BETAS = ["server-side-fallback-2026-07-01"];
+import { checkPasscode } from "./lib/passcode";
+import { MODEL, createMessage, textOf } from "./lib/anthropicClient";
 
 function addDaysIso(date: string, days: number): string {
   const d = new Date(date + "T12:00:00");
   d.setDate(d.getDate() + days);
   return d.toISOString().split("T")[0];
-}
-
-function checkPasscode(passcode: string) {
-  const expected = process.env.COACH_PASSCODE ?? "Oakville5k";
-  if (passcode !== expected) throw new Error("Wrong passcode");
 }
 
 const SYSTEM_PROMPT = `You are the user's personal running coach inside their training app. One athlete, one goal: the Oakville 5K at Coronation Park on Sunday October 4, 2026, targeting sub-25:00 (5:00/km), stretch goal 24:30.
@@ -33,6 +27,8 @@ Strava data quirk: the athlete often records one session as several Strava activ
 You can edit the plan with your tools when the athlete asks or when circumstances clearly require it (travel, illness, fatigue, missed sessions). Rules: never edit completed workouts (history is immutable — rematch_date is the one exception, since it rebuilds a day from Strava rather than rewriting it); protect the Tuesday quality sessions and the two checkpoint workouts — move them rather than drop them; easy volume is the first thing to cut; never stack hard days back to back; nothing hard in the final 3 days before the race. After making changes, summarize exactly what you changed. Dates are YYYY-MM-DD. If a request is ambiguous, make the sensible coaching call and say what you assumed.
 
 Missed runs: a workout flagged missed:true is one the app's morning check found unlogged after its day passed (with overnight grace for late uploads). When a run is newly missed, decide whether the week needs rebalancing and make the edits yourself: missed easy volume is usually absorbed, not crammed in later; the long run may shift within its own week; quality sessions and checkpoints get moved, never dropped. If no edit is needed, one neutral sentence at most. Whatever you do, state it plainly in the briefing.
+
+Splits: Strava's sync gives you whole-activity numbers only, so an interval session arrives as one meaningless average pace. The athlete fills that gap by uploading a screenshot of their watch's split table, which the app transcribes and lists as SPLIT UPLOADS in your context (get_splits fetches any date range, including older ones). Treat those splits as ground truth for what happened inside a session: judge a quality session on its work reps and their recoveries — rep-by-rep pace, heart rate and fade across reps — never on the session average. The paces there are computed by the app from distance and time, so quote them as they stand. A split marked "PACE DISAGREES WITH SCREENSHOT" may be a misread digit: say so rather than drawing a conclusion from it. If a hard session has no splits uploaded and the numbers you do have don't settle a question, it's fair to ask for the screenshot once.
 
 Checkpoints: CHECKPOINT RESULTS in your context are ground truth for the goal — a recorded pass settles the question, never ask for a retest it already answered. When a checkpoint workout completes and no result is recorded yet, evaluate its decision rule against the actual numbers and store it with record_checkpoint (benchmark_2k = the Aug 27 2K TT, race_pace_3k = the Sep 15 3K @ 5:00), including goal_seconds when the outcome changes the race target.`;
 
@@ -112,6 +108,18 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
     },
   },
   {
+    name: "get_splits",
+    description: "Get uploaded per-split detail (rep-by-rep distance, time, pace, heart rate) for sessions in a date range, inclusive. Your context already carries the last 14 days — use this to look further back, e.g. to compare today's reps against the same session three weeks ago.",
+    input_schema: {
+      type: "object",
+      properties: {
+        start_date: { type: "string", description: "YYYY-MM-DD" },
+        end_date: { type: "string", description: "YYYY-MM-DD" },
+      },
+      required: ["start_date", "end_date"],
+    },
+  },
+  {
     name: "record_checkpoint",
     description: "Record the outcome of a checkpoint workout (the plan's decision points). Upserts by key — call again with the same key to correct an entry.",
     input_schema: {
@@ -147,6 +155,7 @@ type CoachContext = {
   currentWeek: { weekStart: string; stats: unknown };
   weeklyReviews: { weekStart: string; stats: unknown; review: string }[];
   checkpoints: { key: string; date: string; decision: string }[];
+  splitUploads: unknown[];
 };
 
 function contextBlock(context: CoachContext): string {
@@ -164,6 +173,9 @@ function contextBlock(context: CoachContext): string {
     context.weeklyReviews.length > 0
       ? `WEEKLY REVIEW HISTORY (newest first): ${JSON.stringify(context.weeklyReviews)}`
       : "No weekly reviews yet — this is the first week.",
+    context.splitUploads.length > 0
+      ? `SPLIT UPLOADS (per-split detail the athlete uploaded from their watch — paces computed by the app, ground truth for what happened inside these sessions): ${JSON.stringify(context.splitUploads)}`
+      : "No split screenshots uploaded in this window.",
     `Recent journal entries: ${JSON.stringify(context.journals)}`,
     context.latestBriefing ? `Latest briefing (${context.latestBriefing.date}): ${context.latestBriefing.content}` : "No briefings yet.",
   ].join("\n");
@@ -212,6 +224,13 @@ async function runTool(
         targetDistance: input.target_distance,
         targetPace: input.target_pace,
       });
+    case "get_splits":
+      return JSON.stringify(
+        await ctx.runQuery(internal.splits.getSplitsInRange, {
+          startDate: input.start_date,
+          endDate: input.end_date,
+        })
+      );
     case "record_checkpoint":
       return await ctx.runMutation(internal.coach.coachRecordCheckpoint, {
         key: input.key,
@@ -246,60 +265,6 @@ async function runToolCalls(
     }
   }
   return results;
-}
-
-/**
- * Anthropic errors arrive as a JSON blob inside the message. Surface the part
- * that tells the user what to actually do about it.
- */
-function friendlyApiError(e: unknown): Error {
-  if (e instanceof Anthropic.AuthenticationError) {
-    return new Error("Anthropic rejected the API key. Check ANTHROPIC_API_KEY in the Convex deployment (npx convex env list).");
-  }
-  if (e instanceof Anthropic.RateLimitError) {
-    return new Error("Anthropic rate limit hit — wait a moment and try again.");
-  }
-  if (e instanceof Anthropic.APIError) {
-    const detail = typeof e.message === "string" ? e.message : String(e);
-    if (/credit balance|billing|quota/i.test(detail)) {
-      return new Error("Anthropic account has no API credits. Add credits at console.anthropic.com under Billing — a Claude.ai subscription does not cover API usage.");
-    }
-    return new Error(`Anthropic API error ${e.status}: ${detail}`);
-  }
-  return e instanceof Error ? e : new Error(String(e));
-}
-
-/**
- * Server-side refusal fallbacks are opt-in per account. If the beta isn't
- * enabled the request 400s on the parameter itself, so retry once without it
- * rather than failing the whole briefing.
- */
-async function createMessage(
-  client: Anthropic,
-  params: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, "betas" | "fallbacks">
-): Promise<Anthropic.Beta.BetaMessage> {
-  try {
-    return await client.beta.messages.create({ ...params, betas: BETAS, fallbacks: "default" });
-  } catch (e) {
-    const isFallbackRejection =
-      e instanceof Anthropic.APIError &&
-      e.status === 400 &&
-      /fallback|beta/i.test(String(e.message));
-    if (!isFallbackRejection) throw friendlyApiError(e);
-    try {
-      return await client.beta.messages.create(params);
-    } catch (retryError) {
-      throw friendlyApiError(retryError);
-    }
-  }
-}
-
-function textOf(content: Anthropic.Beta.BetaContentBlock[]): string {
-  return content
-    .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n")
-    .trim();
 }
 
 export const sendMessage = action({
@@ -519,6 +484,9 @@ export const generateWeeklyReview = internalAction({
             input.journals.length > 0
               ? `Journal entries from the completed week: ${JSON.stringify(input.journals)}`
               : "No journal entries from the completed week.",
+            input.splitUploads.length > 0
+              ? `Split detail uploaded from the watch for the completed week (ground truth for what happened inside these sessions — judge quality work on the reps, not the session average): ${JSON.stringify(input.splitUploads)}`
+              : "No split screenshots uploaded for the completed week.",
             input.checkpoints.length > 0
               ? `Checkpoint results (ground truth for the goal): ${JSON.stringify(input.checkpoints)}`
               : "No checkpoint results recorded yet.",
