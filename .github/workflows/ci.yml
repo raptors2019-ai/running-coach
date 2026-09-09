@@ -1,0 +1,41 @@
+# Gates every PR before it can be merged. Merging is what ships to the live
+# site (Vercel builds main, and its build command pushes the Convex backend),
+# so a green run here is the only thing standing between a bad commit and
+# production. No secrets needed: the app builds fine without
+# NEXT_PUBLIC_CONVEX_URL by design.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push supersedes the run in flight for the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build

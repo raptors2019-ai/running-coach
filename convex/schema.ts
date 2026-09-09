@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { splitValidator } from "./lib/splitParsing";
 
 export default defineSchema({
   trainingPlan: defineTable({
@@ -112,6 +113,25 @@ export default defineSchema({
     targets: v.optional(v.array(v.string())), // things to hit next week
     reminders: v.optional(v.array(v.string())), // things not to forget
   }).index("by_week_start", ["weekStart"]),
+
+  // Per-split detail from a watch screenshot. Strava's sync carries only
+  // whole-activity numbers, so an interval session arrives as one average
+  // pace — the reps themselves live nowhere until they're uploaded here.
+  splitUploads: defineTable({
+    date: v.string(), // YYYY-MM-DD the session was run
+    workoutId: v.optional(v.id("workouts")),
+    images: v.array(v.object({ storageId: v.id("_storage"), mimeType: v.string() })),
+    status: v.union(v.literal("processing"), v.literal("ready"), v.literal("failed")),
+    error: v.optional(v.string()),
+    source: v.optional(v.string()), // app or device the screenshot came from
+    note: v.optional(v.string()), // the athlete's own note on the session
+    splits: v.optional(v.array(splitValidator)),
+    totalDistanceMeters: v.optional(v.number()),
+    totalDurationSeconds: v.optional(v.number()),
+    extractionNotes: v.optional(v.string()), // anything the reader flagged
+    createdAt: v.number(),
+  }).index("by_date", ["date"])
+    .index("by_workout", ["workoutId"]),
 
   weatherCache: defineTable({
     date: v.string(),

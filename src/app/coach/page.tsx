@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useSyncExternalStore } from "react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,32 +21,16 @@ import {
   History,
 } from "lucide-react";
 import { getLocalDateString, formatDistance } from "@/lib/pace-utils";
+import {
+  subscribePasscode,
+  loadPasscode,
+  noPasscode,
+  savePasscode,
+  clearPasscode,
+  describeError,
+  isWrongPasscode,
+} from "@/lib/passcode";
 import { format, parseISO, addDays } from "date-fns";
-
-const PASSCODE_KEY = "coach_passcode";
-
-/**
- * Convex wraps action errors with a stack trace and framework noise. Pull out
- * the first meaningful line so the UI shows the real cause (bad key, no
- * credits, rate limit) instead of a generic guess.
- */
-function describeError(e: unknown): string {
-  if (!(e instanceof Error)) return String(e);
-  const cleaned = e.message
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith("at ") && !l.startsWith("Called by"))
-    .join(" ");
-  return cleaned || e.message;
-}
-
-function loadPasscode(): string | null {
-  try {
-    return localStorage.getItem(PASSCODE_KEY);
-  } catch {
-    return null;
-  }
-}
 
 function weekLabel(weekStart: string): string {
   const start = parseISO(weekStart);
@@ -55,7 +39,7 @@ function weekLabel(weekStart: string): string {
 }
 
 export default function CoachPage() {
-  const [passcode, setPasscode] = useState<string | null>(null);
+  const passcode = useSyncExternalStore(subscribePasscode, loadPasscode, noPasscode);
   const [passcodeInput, setPasscodeInput] = useState("");
   const [passcodeError, setPasscodeError] = useState(false);
   const [draft, setDraft] = useState("");
@@ -76,10 +60,6 @@ export default function CoachPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setPasscode(loadPasscode());
-  }, []);
-
-  useEffect(() => {
     if (tab === "daily") bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages?.length, sending, tab]);
 
@@ -94,12 +74,9 @@ export default function CoachPage() {
     : [];
 
   const handlePasscodeFailure = (e: unknown, fallback: string) => {
-    if (e instanceof Error && e.message.includes("Wrong passcode")) {
-      setPasscode(null);
+    if (isWrongPasscode(e)) {
       setPasscodeError(true);
-      try {
-        localStorage.removeItem(PASSCODE_KEY);
-      } catch {}
+      clearPasscode();
     } else {
       alert(`${fallback}\n\n${describeError(e)}`);
     }
@@ -108,12 +85,7 @@ export default function CoachPage() {
   const unlock = () => {
     const code = passcodeInput.trim();
     if (!code) return;
-    try {
-      localStorage.setItem(PASSCODE_KEY, code);
-    } catch {
-      // Private mode — proceed for this visit only
-    }
-    setPasscode(code);
+    savePasscode(code);
     setPasscodeError(false);
   };
 
