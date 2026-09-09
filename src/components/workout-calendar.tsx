@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Doc, Id } from "../../convex/_generated/dataModel";
 import { DndContext, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
@@ -12,6 +12,7 @@ export function WorkoutCalendar() {
   const allWorkouts = useQuery(api.workouts.getAllWorkouts);
   const plan = useQuery(api.workouts.getTrainingPlan);
   const swapWorkoutDates = useMutation(api.workouts.swapWorkoutDates);
+  const syncAndAutoMatch = useAction(api.strava.syncAndAutoMatch);
   const [selectedWorkout, setSelectedWorkout] = useState<Doc<"workouts"> | null>(null);
 
   const pointerSensor = useSensor(PointerSensor, {
@@ -60,10 +61,18 @@ export function WorkoutCalendar() {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    await swapWorkoutDates({
-      workoutId1: active.id as Id<"workouts">,
-      workoutId2: over.id as Id<"workouts">,
-    });
+    try {
+      await swapWorkoutDates({
+        workoutId1: active.id as Id<"workouts">,
+        workoutId2: over.id as Id<"workouts">,
+      });
+    } catch (e) {
+      alert(e instanceof Error ? e.message.split("\n")[0] : String(e));
+      return;
+    }
+    // Plans just changed hands — re-sync so a day's Strava run lands on
+    // whatever is now planned there, without waiting for the throttle.
+    syncAndAutoMatch({}).catch(() => {});
   };
 
   return (

@@ -2,6 +2,7 @@ import { query, internalQuery, internalMutation, type QueryCtx, type MutationCtx
 import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { inferWeekNumber, getDayOfWeek, isRunningType } from "./lib/stravaMapping";
+import { swapPlanPatches } from "./lib/planSwap";
 import { splitsForPrompt } from "./lib/splitParsing";
 
 function todayToronto(): string {
@@ -467,7 +468,8 @@ export const coachUpdateWorkout = internalMutation({
   handler: async (ctx, args) => {
     const workout = await plannedWorkoutOn(ctx, args.date);
     if (!workout) throw new Error(`No planned workout on ${args.date}`);
-    if (workout.completed) throw new Error(`Workout on ${args.date} is already completed — history is not editable`);
+    // A completed day can be relabelled with what was actually done; its
+    // numbers are never touched here.
     if (args.type !== undefined && args.type !== workout.type && isProtectedWorkout(workout)) {
       throw new Error(`${workout.title} is a checkpoint/race workout — it can be moved, not replaced`);
     }
@@ -483,20 +485,27 @@ export const coachMoveWorkout = internalMutation({
   handler: async (ctx, args) => {
     const from = await plannedWorkoutOn(ctx, args.fromDate);
     if (!from) throw new Error(`No planned workout on ${args.fromDate}`);
-    if (from.completed) throw new Error(`Workout on ${args.fromDate} is already completed`);
     const to = await plannedWorkoutOn(ctx, args.toDate);
-    if (to?.completed) throw new Error(`Workout on ${args.toDate} is already completed`);
-
-    const plan = await ctx.db.query("trainingPlan").first();
-    const week = (d: string) => (plan ? inferWeekNumber(d, plan.startDate) : 1);
 
     if (to) {
-      // Swap the two days. A rescheduled workout is planned again, not missed.
-      await ctx.db.patch(from._id, { date: args.toDate, dayOfWeek: getDayOfWeek(args.toDate), weekNumber: week(args.toDate), missedAt: undefined });
-      await ctx.db.patch(to._id, { date: args.fromDate, dayOfWeek: getDayOfWeek(args.fromDate), weekNumber: week(args.fromDate), missedAt: undefined });
-      return `Swapped ${args.fromDate} (${from.title}) with ${args.toDate} (${to.title})`;
+      // Swap what was planned for the two days. Each day keeps its own
+      // history, so swapping into a completed day relabels what was done
+      // there; swapping two completed days would rewrite history.
+      if (from.completed && to.completed) {
+        throw new Error(`Both ${args.fromDate} and ${args.toDate} are already completed — history is not editable`);
+      }
+      const [fromPatch, toPatch] = swapPlanPatches(from, to);
+      await ctx.db.patch(from._id, fromPatch);
+      await ctx.db.patch(to._id, toPatch);
+      const done = from.completed ? args.fromDate : to.completed ? args.toDate : null;
+      return `Swapped ${args.fromDate} (${from.title}) with ${args.toDate} (${to.title})${done ? `; ${done} keeps its logged run` : ""}`;
     }
-    await ctx.db.patch(from._id, { date: args.toDate, dayOfWeek: getDayOfWeek(args.toDate), weekNumber: week(args.toDate), missedAt: undefined });
+
+    if (from.completed) throw new Error(`Workout on ${args.fromDate} is already completed — its run stays on that date`);
+    const plan = await ctx.db.query("trainingPlan").first();
+    const week = plan ? inferWeekNumber(args.toDate, plan.startDate) : 1;
+    // A rescheduled workout is planned again, not missed.
+    await ctx.db.patch(from._id, { date: args.toDate, dayOfWeek: getDayOfWeek(args.toDate), weekNumber: week, missedAt: undefined });
     return `Moved ${from.title} from ${args.fromDate} to ${args.toDate}`;
   },
 });

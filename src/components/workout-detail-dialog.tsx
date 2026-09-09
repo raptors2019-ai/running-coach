@@ -1,8 +1,9 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery, useAction } from "convex/react";
+import { useRouter } from "next/navigation";
 import { api } from "../../convex/_generated/api";
-import { Doc } from "../../convex/_generated/dataModel";
+import { Doc, Id } from "../../convex/_generated/dataModel";
 import {
   Dialog,
   DialogContent,
@@ -12,13 +13,24 @@ import {
 import { Button } from "@/components/ui/button";
 import { WorkoutTypeBadge } from "./workout-type-badge";
 import { ManualEntryForm } from "./manual-entry-form";
-import { formatDistance, formatPaceDisplay } from "@/lib/pace-utils";
+import { formatDistance, formatPaceDisplay, getLocalDateString } from "@/lib/pace-utils";
+import { substitutionOptions, substitutionMessage, plannedTitle } from "@/lib/substitution";
 import { format } from "date-fns";
 import { isNonRunningType } from "@/lib/constants";
-import { CheckCircle2, MapPin, Timer, Zap, Undo2, ListOrdered } from "lucide-react";
+import { CheckCircle2, MapPin, Timer, Zap, Undo2, ListOrdered, Shuffle } from "lucide-react";
 import { SplitsTable } from "./splits-table";
 import Link from "next/link";
 import { useState } from "react";
+
+/** Off-plan things the athlete might do in place of a session. */
+const SUBSTITUTE_TYPES = [
+  { type: "easy", title: "Easy Run" },
+  { type: "long", title: "Long Run" },
+  { type: "tempo", title: "Tempo Run" },
+  { type: "swim", title: "Swim" },
+  { type: "cross_training", title: "Cross Training" },
+  { type: "rest", title: "Rest Day" },
+];
 
 interface WorkoutDetailDialogProps {
   workout: Doc<"workouts">;
@@ -36,8 +48,50 @@ export function WorkoutDetailDialog({
   const readySplits = (splitUploads ?? []).filter((u) => u.status === "ready");
   const markComplete = useMutation(api.workouts.markWorkoutComplete);
   const unmarkComplete = useMutation(api.workouts.unmarkWorkoutComplete);
+  const swapWorkoutDates = useMutation(api.workouts.swapWorkoutDates);
+  const updateWorkoutType = useMutation(api.workouts.updateWorkoutType);
+  const syncAndAutoMatch = useAction(api.strava.syncAndAutoMatch);
+  const router = useRouter();
 
   const isRestDay = isNonRunningType(workout.type);
+
+  // "Did something else?" — for a day that is done or has passed, relabel it
+  // with what was actually done and hand the week to the coach to rebalance.
+  const [substituting, setSubstituting] = useState(false);
+  const [choice, setChoice] = useState("");
+  const [substituteError, setSubstituteError] = useState<string | null>(null);
+  const canSubstitute = !workout.isUnplanned && (workout.completed || workout.date < getLocalDateString());
+  const weekWorkouts = useQuery(
+    api.workouts.getWorkoutsByWeek,
+    canSubstitute ? { weekNumber: workout.weekNumber } : "skip"
+  );
+  const swapOptions = substitutionOptions(weekWorkouts ?? [], workout);
+
+  const handleSubstitute = async () => {
+    if (!choice) return;
+    setSubstituteError(null);
+    let did: string;
+    try {
+      if (choice.startsWith("w:")) {
+        const other = swapOptions.find((w) => w._id === choice.slice(2));
+        if (!other) return;
+        await swapWorkoutDates({ workoutId1: workout._id, workoutId2: other._id as Id<"workouts"> });
+        did = other.title;
+      } else {
+        const type = choice.slice(2);
+        did = SUBSTITUTE_TYPES.find((t) => t.type === type)?.title ?? type;
+        await updateWorkoutType({ workoutId: workout._id, type, title: did });
+      }
+    } catch (e) {
+      setSubstituteError(e instanceof Error ? e.message.split("\n")[0] : String(e));
+      return;
+    }
+    // The day's plan just changed — let Strava's run land on it right away.
+    syncAndAutoMatch({}).catch(() => {});
+    const message = substitutionMessage({ date: workout.date, did, insteadOf: plannedTitle(workout) });
+    onOpenChange(false);
+    router.push(`/coach?draft=${encodeURIComponent(message)}`);
+  };
 
   const handleQuickComplete = async () => {
     await markComplete({
@@ -171,6 +225,70 @@ export function WorkoutDetailDialog({
                 Add splits from your watch
               </Link>
             </Button>
+          )}
+
+          {canSubstitute && !substituting && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSubstituting(true)}
+              className="w-full"
+            >
+              <Shuffle className="h-3.5 w-3.5 mr-1" />
+              Did something else?
+            </Button>
+          )}
+
+          {canSubstitute && substituting && (
+            <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+              <label htmlFor="substitute-choice" className="text-sm font-medium">
+                What did you do instead?
+              </label>
+              <select
+                id="substitute-choice"
+                value={choice}
+                onChange={(e) => setChoice(e.target.value)}
+                className="w-full text-sm rounded border border-input bg-background px-2 py-1.5"
+              >
+                <option value="">Choose…</option>
+                {swapOptions.length > 0 && (
+                  <optgroup label="Swap with this week">
+                    {swapOptions.map((w) => (
+                      <option key={w._id} value={`w:${w._id}`}>
+                        {w.title} ({format(new Date(w.date + "T12:00:00"), "EEE")})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="Something off-plan">
+                  {SUBSTITUTE_TYPES.map((t) => (
+                    <option key={t.type} value={`t:${t.type}`}>
+                      {t.title}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+              <p className="text-xs text-muted-foreground">
+                This day keeps its logged run. The coach gets a message to rebalance the week — you can edit it before sending.
+              </p>
+              {substituteError && <p className="text-xs text-red-600">{substituteError}</p>}
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleSubstitute} disabled={!choice} className="flex-1">
+                  Update &amp; tell coach
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setSubstituting(false);
+                    setChoice("");
+                    setSubstituteError(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
           )}
 
           {workout.completed && (

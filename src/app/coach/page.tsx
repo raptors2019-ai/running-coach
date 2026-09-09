@@ -63,6 +63,15 @@ export default function CoachPage() {
     if (tab === "daily") bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages?.length, sending, tab]);
 
+  // Other screens hand off a message via ?draft= (e.g. "I did X instead of
+  // Y") — it lands in the composer for a final tweak, not sent unseen.
+  useEffect(() => {
+    const prefill = new URLSearchParams(window.location.search).get("draft");
+    if (!prefill) return;
+    setDraft(prefill);
+    window.history.replaceState(null, "", "/coach");
+  }, []);
+
   const today = getLocalDateString();
   const todaysBriefing = briefings?.find((b) => b.date === today);
   const pastBriefings = briefings?.filter((b) => b.date !== today) ?? [];

@@ -1,6 +1,8 @@
 import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
-import { isRunningType, formatPaceWithUnit, typeAffinityScore, inferWeekNumber, getDayOfWeek, parseTargetPaceSeconds, segmentRole } from "./lib/stravaMapping";
+import { isRunningType, formatPaceWithUnit, inferWeekNumber, getDayOfWeek, segmentRole } from "./lib/stravaMapping";
+import { swapPlanPatches } from "./lib/planSwap";
+import { choosePlannedRow, pickBestActivity, adoptUnplannedRun } from "./lib/syncMatching";
 
 export const getTrainingPlan = query({
   handler: async (ctx) => {
@@ -100,20 +102,20 @@ export const swapWorkoutDates = mutation({
     workoutId1: v.id("workouts"),
     workoutId2: v.id("workouts"),
   },
+  /**
+   * Exchanges what was *planned* for two days. Each row keeps its date and
+   * its history (completion, Strava numbers, notes), so dragging a workout
+   * onto a day already run relabels that day rather than moving its run.
+   */
   handler: async (ctx, args) => {
     const w1 = await ctx.db.get(args.workoutId1);
     const w2 = await ctx.db.get(args.workoutId2);
     if (!w1 || !w2) throw new Error("Workout not found");
-    if (w1.weekNumber !== w2.weekNumber) throw new Error("Can only swap within the same week");
+    if (w1.completed && w2.completed) throw new Error("Both days are already done — history stays put");
 
-    await ctx.db.patch(args.workoutId1, {
-      date: w2.date,
-      dayOfWeek: w2.dayOfWeek,
-    });
-    await ctx.db.patch(args.workoutId2, {
-      date: w1.date,
-      dayOfWeek: w1.dayOfWeek,
-    });
+    const [patch1, patch2] = swapPlanPatches(w1, w2);
+    await ctx.db.patch(args.workoutId1, patch1);
+    await ctx.db.patch(args.workoutId2, patch2);
   },
 });
 
@@ -226,8 +228,24 @@ export const autoCompleteFromActivities = internalMutation({
 
     const plan = await ctx.db.query("trainingPlan").first();
 
-    // Build set of already-synced activity IDs
+    // A day the athlete ticked off by hand before the sync ran holds a
+    // placeholder plus an unplanned row for the real run — fold them together
+    // first, so the planned row carries the Strava numbers.
     const allWorkouts = await ctx.db.query("workouts").collect();
+    const rowsByDate = new Map<string, typeof allWorkouts>();
+    for (const w of allWorkouts) {
+      const group = rowsByDate.get(w.date) ?? [];
+      group.push(w);
+      rowsByDate.set(w.date, group);
+    }
+    for (const rows of rowsByDate.values()) {
+      const adoption = adoptUnplannedRun(rows);
+      if (!adoption) continue;
+      await ctx.db.patch(adoption.plannedId as (typeof rows)[number]["_id"], adoption.patch);
+      await ctx.db.delete(adoption.unplannedId as (typeof rows)[number]["_id"]);
+    }
+
+    // Build set of already-synced activity IDs
     const syncedIds = new Set(
       allWorkouts.filter((w) => w.stravaActivityId).map((w) => w.stravaActivityId!)
     );
@@ -249,10 +267,9 @@ export const autoCompleteFromActivities = internalMutation({
         .withIndex("by_date", (q) => q.eq("date", date))
         .collect();
 
-      // Find the uncompleted planned workout (not unplanned, not completed)
-      const plannedWorkout = workoutsForDate.find(
-        (w) => !w.isUnplanned && !w.completed && !w.stravaActivityId
-      );
+      // The planned row this day's activity should complete: an open one, or
+      // a placeholder the athlete ticked off by hand (its numbers get replaced).
+      const plannedWorkout = choosePlannedRow(workoutsForDate);
 
       // Check which activities already matched existing workouts
       const existingSyncedIds = new Set(
@@ -273,25 +290,7 @@ export const autoCompleteFromActivities = internalMutation({
         // recorded separately), which tie on type affinity — break ties by
         // pace closest to the planned target so the warmup doesn't claim a
         // time trial. Without a target pace, prefer the longest activity.
-        let bestScore = -1;
-        let bestTiebreak = Infinity;
-        const targetSecs = parseTargetPaceSeconds(plannedWorkout.targetPace);
-        for (let i = 0; i < unmatched.length; i++) {
-          const a = unmatched[i];
-          const score = typeAffinityScore(plannedWorkout.type, a.mappedType);
-          const paceSecs = a.actualDistance > 0 ? a.actualDuration / a.actualDistance : null;
-          let tiebreak: number;
-          if (targetSecs !== null) {
-            tiebreak = paceSecs !== null ? Math.abs(paceSecs - targetSecs) : Number.MAX_SAFE_INTEGER;
-          } else {
-            tiebreak = -a.actualDistance;
-          }
-          if (score > bestScore || (score === bestScore && tiebreak < bestTiebreak)) {
-            bestScore = score;
-            bestTiebreak = tiebreak;
-            bestMatchIdx = i;
-          }
-        }
+        bestMatchIdx = pickBestActivity(plannedWorkout, unmatched);
 
         // Patch the planned workout with the best match
         const bestActivity = unmatched[bestMatchIdx];
