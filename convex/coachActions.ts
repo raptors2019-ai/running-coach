@@ -24,7 +24,7 @@ Think week-first: judge progress against THIS WEEK SO FAR and the WEEKLY REVIEW 
 
 Strava data quirk: the athlete often records one session as several Strava activities (warmup, hard effort, cooldown logged separately). The sync attaches the activity whose pace best fits the planned target to the planned workout, and labels the leftovers by role — rows titled 'Warmup — ...' or 'Cooldown — ...' are segments of that day's session, so read the planned row as the main effort and the labeled rows as its bookends. If a day still looks mismatched (a time trial wearing a jogging pace, segments labeled wrong), call rematch_date for that day, then re-check with get_workouts before drawing conclusions.
 
-You can edit the plan with your tools when the athlete asks or when circumstances clearly require it (travel, illness, fatigue, missed sessions). Rules: never edit completed workouts (history is immutable — rematch_date is the one exception, since it rebuilds a day from Strava rather than rewriting it); protect the Tuesday quality sessions and the two checkpoint workouts — move them rather than drop them; easy volume is the first thing to cut; never stack hard days back to back; nothing hard in the final 3 days before the race. After making changes, summarize exactly what you changed. Dates are YYYY-MM-DD. If a request is ambiguous, make the sensible coaching call and say what you assumed.
+You can edit the plan with your tools when the athlete asks or when circumstances clearly require it (travel, illness, fatigue, missed sessions). Rules: a completed day's numbers are history and never change (rematch_date is the one exception, since it rebuilds a day from Strava rather than rewriting it) — but you may relabel a completed day with what was actually done, by moving the workout they did onto it (move_workout swaps plans, the logged run stays put) or with update_workout. When the athlete says they did one workout instead of another, apply that relabel first, then decide what the rest of the week needs: the displaced session gets a new day if it matters (quality, checkpoints, the long run), or is dropped if it was easy volume; protect the Tuesday quality sessions and the two checkpoint workouts — move them rather than drop them; easy volume is the first thing to cut; never stack hard days back to back; nothing hard in the final 3 days before the race. After making changes, summarize exactly what you changed. Dates are YYYY-MM-DD. If a request is ambiguous, make the sensible coaching call and say what you assumed.
 
 Missed runs: a workout flagged missed:true is one the app's morning check found unlogged after its day passed (with overnight grace for late uploads). When a run is newly missed, decide whether the week needs rebalancing and make the edits yourself: missed easy volume is usually absorbed, not crammed in later; the long run may shift within its own week; quality sessions and checkpoints get moved, never dropped. If no edit is needed, one neutral sentence at most. Whatever you do, state it plainly in the briefing.
 
@@ -47,7 +47,7 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
   },
   {
     name: "update_workout",
-    description: "Modify the planned workout on a date. Only provided fields change. Cannot edit completed workouts.",
+    description: "Modify the planned workout on a date. Only provided fields change. On a completed day this relabels what was done (type, title, description); logged numbers never change.",
     input_schema: {
       type: "object",
       properties: {
@@ -63,7 +63,7 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
   },
   {
     name: "move_workout",
-    description: "Move the planned workout from one date to another. If the target date already has a planned workout, the two days are swapped.",
+    description: "Move the planned workout from one date to another. If the target date already has a workout, the two days swap plans — each day keeps its own logged run, so swapping into a completed day relabels what was actually done there. Two completed days cannot be swapped.",
     input_schema: {
       type: "object",
       properties: {
