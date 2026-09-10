@@ -267,61 +267,82 @@ async function runToolCalls(
   return results;
 }
 
-export const sendMessage = action({
-  args: { passcode: v.string(), text: v.string() },
+/**
+ * Answer one chat message. Scheduled by coach.sendMessage rather than called
+ * from the browser: a browser-invoked action is tied to the WebSocket, and
+ * iOS drops that socket the moment Safari goes to the background, which
+ * surfaced as "Connection lost while action was in flight" even though the
+ * coach had finished editing the plan. Here the outcome is written to the
+ * message row either way, so the UI can show the reply, or a retry, whenever
+ * the tab comes back.
+ */
+export const replyToMessage = internalAction({
+  args: { messageId: v.id("coachMessages") },
   handler: async (ctx, args) => {
-    checkPasscode(args.passcode);
-    const client = new Anthropic();
+    const message = await ctx.runQuery(internal.coach.getMessage, { messageId: args.messageId });
+    if (!message || message.role !== "user" || message.replyStatus !== "pending") return;
 
-    await ctx.runMutation(internal.coach.insertMessage, { role: "user", content: args.text });
-    const context: CoachContext = await ctx.runQuery(internal.coach.getCoachContext);
-
-    // History from the DB already includes the message just inserted.
-    // Drop any leading assistant turns — the API requires user-first.
-    const history = [...context.recentMessages];
-    while (history.length && history[0].role === "assistant") history.shift();
-    const messages: Anthropic.Beta.BetaMessageParam[] = history.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
-
-    let reply = "";
-    for (let turn = 0; turn < 8; turn++) {
-      const response = await createMessage(client, {
-        model: MODEL,
-        max_tokens: 4096,
-        system: [
-          { type: "text", text: SYSTEM_PROMPT },
-          { type: "text", text: contextBlock(context) },
-        ],
-        tools: TOOLS,
-        messages,
+    try {
+      const reply = await answer(ctx);
+      await ctx.runMutation(internal.coach.saveReply, { messageId: args.messageId, content: reply });
+    } catch (e) {
+      console.error("Coach reply failed", e);
+      await ctx.runMutation(internal.coach.failReply, {
+        messageId: args.messageId,
+        error: e instanceof Error ? e.message : String(e),
       });
-
-      if (response.stop_reason === "refusal") {
-        reply = "I can't help with that one — let's keep it to training.";
-        break;
-      }
-
-      messages.push({ role: "assistant", content: response.content });
-      const toolUses = response.content.filter(
-        (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use"
-      );
-
-      if (toolUses.length === 0 || response.stop_reason !== "tool_use") {
-        reply = textOf(response.content);
-        break;
-      }
-
-      // Execute all tool calls, return all results in one user message
-      messages.push({ role: "user", content: await runToolCalls(ctx, toolUses) });
     }
-
-    if (!reply) reply = "Sorry, I lost my train of thought — try asking again.";
-    await ctx.runMutation(internal.coach.insertMessage, { role: "assistant", content: reply });
-    return reply;
   },
 });
+
+/** Run the chat tool loop over the stored history and return the coach's text. */
+async function answer(ctx: ActionCtx): Promise<string> {
+  const client = new Anthropic();
+  const context: CoachContext = await ctx.runQuery(internal.coach.getCoachContext);
+
+  // History from the DB already includes the message being answered.
+  // Drop any leading assistant turns — the API requires user-first.
+  const history = [...context.recentMessages];
+  while (history.length && history[0].role === "assistant") history.shift();
+  const messages: Anthropic.Beta.BetaMessageParam[] = history.map((m) => ({
+    role: m.role,
+    content: m.content,
+  }));
+
+  let reply = "";
+  for (let turn = 0; turn < 8; turn++) {
+    const response = await createMessage(client, {
+      model: MODEL,
+      max_tokens: 4096,
+      system: [
+        { type: "text", text: SYSTEM_PROMPT },
+        { type: "text", text: contextBlock(context) },
+      ],
+      tools: TOOLS,
+      messages,
+    });
+
+    if (response.stop_reason === "refusal") {
+      reply = "I can't help with that one — let's keep it to training.";
+      break;
+    }
+
+    messages.push({ role: "assistant", content: response.content });
+    const toolUses = response.content.filter(
+      (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use"
+    );
+
+    if (toolUses.length === 0 || response.stop_reason !== "tool_use") {
+      reply = textOf(response.content);
+      break;
+    }
+
+    // Execute all tool calls, return all results in one user message
+    messages.push({ role: "user", content: await runToolCalls(ctx, toolUses) });
+  }
+
+  return reply || "Sorry, I lost my train of thought — try asking again.";
+}
 
 export const generateBriefing = internalAction({
   args: { force: v.optional(v.boolean()) },

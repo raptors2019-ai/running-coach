@@ -92,6 +92,13 @@ export default defineSchema({
   coachMessages: defineTable({
     role: v.union(v.literal("user"), v.literal("assistant")),
     content: v.string(),
+    // On a user message: whether the coach's reply has landed. The reply is
+    // produced by a scheduled action, so the chat survives the phone dropping
+    // its connection mid-answer. Absent on older rows and on assistant rows.
+    replyStatus: v.optional(
+      v.union(v.literal("pending"), v.literal("done"), v.literal("failed"))
+    ),
+    replyError: v.optional(v.string()),
   }),
 
   coachWeeklyReviews: defineTable({

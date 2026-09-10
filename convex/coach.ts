@@ -1,6 +1,15 @@
-import { query, internalQuery, internalMutation, type QueryCtx, type MutationCtx } from "./_generated/server";
+import {
+  query,
+  mutation,
+  internalQuery,
+  internalMutation,
+  type QueryCtx,
+  type MutationCtx,
+} from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
+import { checkPasscode } from "./lib/passcode";
 import { inferWeekNumber, getDayOfWeek, isRunningType } from "./lib/stravaMapping";
 import { swapPlanPatches } from "./lib/planSwap";
 import { splitsForPrompt } from "./lib/splitParsing";
@@ -264,13 +273,62 @@ export const getMessages = query({
   },
 });
 
-export const insertMessage = internalMutation({
-  args: {
-    role: v.union(v.literal("user"), v.literal("assistant")),
-    content: v.string(),
-  },
+/**
+ * Chat is send-and-forget: the message is stored here and the reply is
+ * produced by a scheduled action. A mutation is retried by the Convex client
+ * across reconnects and the action runs server-side regardless, so the phone
+ * going to sleep (or Safari being backgrounded) mid-answer no longer loses
+ * the reply — it shows up through the subscription when the tab comes back.
+ */
+export const sendMessage = mutation({
+  args: { passcode: v.string(), text: v.string() },
   handler: async (ctx, args) => {
-    await ctx.db.insert("coachMessages", args);
+    checkPasscode(args.passcode);
+    const text = args.text.trim();
+    if (!text) throw new Error("Empty message");
+    const messageId = await ctx.db.insert("coachMessages", {
+      role: "user",
+      content: text,
+      replyStatus: "pending",
+    });
+    await ctx.scheduler.runAfter(0, internal.coachActions.replyToMessage, { messageId });
+    return messageId;
+  },
+});
+
+/** Re-run the coach on a message whose reply failed (or never came back). */
+export const retryMessage = mutation({
+  args: { passcode: v.string(), messageId: v.id("coachMessages") },
+  handler: async (ctx, args) => {
+    checkPasscode(args.passcode);
+    const message = await ctx.db.get(args.messageId);
+    if (!message || message.role !== "user") throw new Error("Message not found");
+    if (message.replyStatus === "done") return;
+    await ctx.db.patch(args.messageId, { replyStatus: "pending", replyError: undefined });
+    await ctx.scheduler.runAfter(0, internal.coachActions.replyToMessage, {
+      messageId: args.messageId,
+    });
+  },
+});
+
+export const getMessage = internalQuery({
+  args: { messageId: v.id("coachMessages") },
+  handler: async (ctx, args) => await ctx.db.get(args.messageId),
+});
+
+/** Store the coach's answer and close out the user message it answers. */
+export const saveReply = internalMutation({
+  args: { messageId: v.id("coachMessages"), content: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("coachMessages", { role: "assistant", content: args.content });
+    await ctx.db.patch(args.messageId, { replyStatus: "done", replyError: undefined });
+  },
+});
+
+export const failReply = internalMutation({
+  args: { messageId: v.id("coachMessages"), error: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.messageId, { replyStatus: "failed", replyError: args.error });
   },
 });
 

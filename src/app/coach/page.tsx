@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect, useSyncExternalStore } from "react";
-import { useQuery, useAction } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,15 +54,30 @@ export default function CoachPage() {
   const messages = useQuery(api.coach.getMessages);
   const overview = useQuery(api.coach.getWeeklyOverview);
   const weeklyReviews = useQuery(api.coach.getWeeklyReviews);
-  const sendMessage = useAction(api.coachActions.sendMessage);
+  const sendMessage = useMutation(api.coach.sendMessage);
+  const retryMessage = useMutation(api.coach.retryMessage);
   const generateBriefing = useAction(api.coachActions.generateBriefingNow);
   const generateReview = useAction(api.coachActions.generateWeeklyReviewNow);
+
+  // The reply is written by a scheduled action, so "the coach is thinking"
+  // is a fact in the database, not local state — it survives the tab being
+  // backgrounded or reloaded mid-answer. A reply that never lands (the action
+  // died without reporting) is treated as failed after Convex's action limit.
+  const REPLY_TIMEOUT_MS = 10 * 60 * 1000;
+  const lastMessage = messages?.[messages.length - 1];
+  const awaitingReply =
+    lastMessage?.role === "user" &&
+    lastMessage.replyStatus === "pending" &&
+    Date.now() - lastMessage._creationTime < REPLY_TIMEOUT_MS;
+  const replyFailed = (m: { replyStatus?: string; _creationTime: number }) =>
+    m.replyStatus === "failed" ||
+    (m.replyStatus === "pending" && Date.now() - m._creationTime >= REPLY_TIMEOUT_MS);
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (tab === "daily") bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages?.length, sending, tab]);
+  }, [messages?.length, sending, awaitingReply, tab]);
 
   // Other screens hand off a message via ?draft= (e.g. "I did X instead of
   // Y") — it lands in the composer for a final tweak, not sent unseen.
@@ -100,15 +116,25 @@ export default function CoachPage() {
 
   const handleSend = async () => {
     const text = draft.trim();
-    if (!text || !passcode || sending) return;
+    if (!text || !passcode || sending || awaitingReply) return;
     setDraft("");
     setSending(true);
     try {
       await sendMessage({ passcode, text });
     } catch (e) {
-      handlePasscodeFailure(e, "Coach didn't answer.");
+      setDraft(text);
+      handlePasscodeFailure(e, "Couldn't send that message.");
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleRetry = async (messageId: Id<"coachMessages">) => {
+    if (!passcode || sending || awaitingReply) return;
+    try {
+      await retryMessage({ passcode, messageId });
+    } catch (e) {
+      handlePasscodeFailure(e, "Couldn't retry that message.");
     }
   };
 
@@ -256,7 +282,7 @@ export default function CoachPage() {
               </p>
             )}
             {messages?.map((m) => (
-              <div key={m._id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div key={m._id} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
                 <div
                   className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${
                     m.role === "user"
@@ -266,9 +292,23 @@ export default function CoachPage() {
                 >
                   {m.content}
                 </div>
+                {m.role === "user" && replyFailed(m) && (
+                  <div className="max-w-[85%] mt-1 text-xs text-red-600 flex items-center gap-2">
+                    <span className="line-clamp-2">
+                      Coach didn&apos;t answer{m.replyError ? ` — ${m.replyError}` : "."}
+                    </span>
+                    <button
+                      className="underline disabled:opacity-50"
+                      onClick={() => handleRetry(m._id)}
+                      disabled={sending || awaitingReply}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
-            {sending && (
+            {(sending || awaitingReply) && (
               <div className="flex justify-start">
                 <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-2.5">
                   <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -372,10 +412,10 @@ export default function CoachPage() {
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-              placeholder="Message your coach..."
-              disabled={sending}
+              placeholder={awaitingReply ? "Coach is thinking..." : "Message your coach..."}
+              disabled={sending || awaitingReply}
             />
-            <Button onClick={handleSend} disabled={sending || !draft.trim()} size="icon">
+            <Button onClick={handleSend} disabled={sending || awaitingReply || !draft.trim()} size="icon">
               <Send className="h-4 w-4" />
             </Button>
           </div>
