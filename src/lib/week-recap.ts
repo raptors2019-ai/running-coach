@@ -30,6 +30,8 @@ export interface RecapWorkout {
   actualDuration?: number;
   actualPace?: string;
   avgHeartRate?: number;
+  /** A Strava run the plan never asked for — done, but not "planned". */
+  isUnplanned?: boolean;
 }
 
 export interface RecapEntry {
@@ -38,8 +40,6 @@ export interface RecapEntry {
   dayLabel: string; // "Tue Sep 1"
   type: string;
   typeLabel: string; // "Intervals"
-  /** "STRENGTH" / "SWIM" / "CROSS-TRAIN" — what a session row is tagged as. */
-  categoryLabel: string;
   title: string;
   /** False for the lifts, swims and cross-training of an "all" recap. */
   isRun: boolean;
@@ -64,6 +64,7 @@ export interface RecapDay {
 
 export interface WeekRecap {
   mode: RecapMode;
+  /** The plan week this calendar week belongs to; 0 for pre-plan history. */
   weekNumber: number;
   weekLabel: string; // "Week 3"
   weekTitle?: string; // "VO2max"
@@ -89,8 +90,12 @@ export interface WeekRecap {
   longestKm: number;
   plannedRuns: number;
   plannedKm: number;
-  /** Runs done ÷ runs planned, clamped to 100 for an over-delivered week. */
-  completionPct: number;
+  /**
+   * Planned runs that got done. Deliberately not `runCount`: an unplanned
+   * Strava run is work, but it is not the session the plan asked for, and a
+   * week of bonus runs must not read as a week that hit its plan.
+   */
+  plannedDone: number;
 }
 
 /** Plan-week names, mirroring the calendar's week headers. */
@@ -153,15 +158,21 @@ export function groupByWeek<T extends { weekNumber: number }>(
   return new Map([...weeks.entries()].sort(([a], [b]) => a - b));
 }
 
-/** Plan weeks that have at least one run logged — the ones worth posting. */
-export function weeksWithRuns(workouts: RecapWorkout[]): number[] {
-  const weeks = new Set<number>();
+/**
+ * The Mondays of every calendar week holding a run worth posting.
+ *
+ * Recaps key off the calendar week, not the plan's week number: all pre-plan
+ * history shares week 0 while spanning many actual weeks, so a card built per
+ * week number would put a month of running under one Mon–Sun chart.
+ */
+export function weeksWithRuns(workouts: RecapWorkout[]): string[] {
+  const weeks = new Set<string>();
   for (const w of workouts) {
     if (w.completed && isRunType(w.type) && runDistance(w) >= MIN_MEANINGFUL_KM) {
-      weeks.add(w.weekNumber);
+      weeks.add(getWeekBounds(w.date).start);
     }
   }
-  return [...weeks].sort((a, b) => a - b);
+  return [...weeks].sort();
 }
 
 /**
@@ -170,17 +181,25 @@ export function weeksWithRuns(workouts: RecapWorkout[]): number[] {
  */
 export function buildWeekRecap(
   workouts: RecapWorkout[],
-  weekNumber: number,
+  /** Monday of the calendar week, as `weeksWithRuns` returns it. */
+  weekStart: string,
   mode: RecapMode = "runs"
 ): WeekRecap | null {
+  const { start, end } = getWeekBounds(weekStart);
   const inWeek = workouts
-    .filter((w) => w.weekNumber === weekNumber)
+    .filter((w) => w.date >= start && w.date <= end)
     .sort((a, b) => a.date.localeCompare(b.date));
   if (inWeek.length === 0) return null;
 
-  const planned = inWeek.filter((w) => isRunType(w.type));
+  // The plan start can fall mid-week, so one calendar week can hold both
+  // pre-plan history and plan week 1. The plan week is the one it built into.
+  const weekNumber = inWeek.reduce((max, w) => Math.max(max, w.weekNumber), 0);
+  // An unplanned Strava run counts as done but was never on the board.
+  const planned = inWeek.filter((w) => isRunType(w.type) && !w.isUnplanned);
   // Sub-kilometre blips are warm-ups and walks, not runs worth posting.
-  const done = planned.filter((w) => w.completed && runDistance(w) >= MIN_MEANINGFUL_KM);
+  const done = inWeek.filter(
+    (w) => isRunType(w.type) && w.completed && runDistance(w) >= MIN_MEANINGFUL_KM
+  );
 
   const paces = done.map(runPaceSeconds);
   const fastest = paces.filter((p): p is number => p !== undefined).sort((a, b) => a - b)[0];
@@ -202,7 +221,6 @@ export function buildWeekRecap(
       dayLabel: `${shortDay(w.date)} ${monthDay(w.date)}`,
       type: w.type,
       typeLabel: WORKOUT_TYPE_LABELS[w.type] ?? "Run",
-      categoryLabel: "RUN",
       title: w.title,
       isRun: true,
       distanceKm,
@@ -230,7 +248,6 @@ export function buildWeekRecap(
       dayLabel: `${shortDay(w.date)} ${monthDay(w.date)}`,
       type: w.type,
       typeLabel: WORKOUT_TYPE_LABELS[w.type] ?? "Session",
-      categoryLabel: categoryFor(w.type),
       title: w.title,
       isRun: false,
       distanceKm: 0,
@@ -251,7 +268,6 @@ export function buildWeekRecap(
     .filter((r) => r.durationSeconds)
     .reduce((sum, r) => sum + r.distanceKm, 0);
 
-  const { start, end } = getWeekBounds(inWeek[0].date);
   const kmByDate = new Map<string, number>();
   for (const r of runs) kmByDate.set(r.date, (kmByDate.get(r.date) ?? 0) + r.distanceKm);
   // A session only marks the week's bar chart when the card claims sessions.
@@ -289,16 +305,10 @@ export function buildWeekRecap(
     longestKm: Math.round(longestKm * 100) / 100,
     plannedRuns: planned.length,
     plannedKm: Math.round(plannedKm * 100) / 100,
-    completionPct:
-      planned.length === 0 ? 0 : Math.min(100, Math.round((runs.length / planned.length) * 100)),
+    plannedDone: planned.filter(
+      (w) => w.completed && runDistance(w) >= MIN_MEANINGFUL_KM
+    ).length,
   };
-}
-
-/** The row tag for a session, which never just repeats its own title. */
-function categoryFor(type: string): string {
-  if (LIFT_TYPES.has(type)) return "STRENGTH";
-  if (type === "swim") return "SWIM";
-  return "CROSS-TRAIN";
 }
 
 /** "2 lifts · 1 swim" — the week's non-running work, in one line. */
@@ -313,6 +323,26 @@ function summariseSessions(sessions: RecapEntry[]): string {
     .join(" · ");
 }
 
+/**
+ * Pick the rows a card has room for. Runs are never the thing that gets
+ * dropped — a recap that hides the long run to show a cross-training session
+ * has its priorities backwards — so overflow comes out of the sessions.
+ */
+export function selectRows<T extends { isRun: boolean; date: string }>(
+  entries: T[],
+  max: number
+): { rows: T[]; hidden: number } {
+  if (entries.length <= max) return { rows: entries, hidden: 0 };
+  const budget = max - 1; // the "+N more" line costs a row of its own
+  const kept = entries.filter((e) => e.isRun).slice(0, budget);
+  for (const entry of entries) {
+    if (kept.length >= budget) break;
+    if (!entry.isRun) kept.push(entry);
+  }
+  kept.sort((a, b) => a.date.localeCompare(b.date));
+  return { rows: kept, hidden: entries.length - kept.length };
+}
+
 /** The caption Josh's post leads with. Short by design — it has to fit big. */
 export function defaultCaption(recap: WeekRecap): string {
   return recap.runCount === 0
@@ -324,8 +354,9 @@ export function defaultCaption(recap: WeekRecap): string {
 export function weekHighlight(recap: WeekRecap): string {
   if (recap.runCount === 0) return "";
   if (recap.plannedRuns === 0) return "Before the plan even started";
-  if (recap.runCount >= recap.plannedRuns) return "Every run on the board";
-  return `${recap.runCount} of ${recap.plannedRuns} runs in the bank`;
+  if (recap.plannedDone >= recap.plannedRuns) return "Every run on the board";
+  // Short of the plan: count what was actually run rather than claim the plan.
+  return `${recap.runCount} ${recap.runCount === 1 ? "run" : "runs"} in the bank`;
 }
 
 /**

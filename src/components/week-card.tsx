@@ -5,6 +5,7 @@ import { Doc } from "../../convex/_generated/dataModel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SortableWorkoutRow } from "./sortable-workout-row";
 import { formatDistance, getLocalDateString } from "@/lib/pace-utils";
+import { getWeekBounds } from "@/lib/weekly-stats";
 import { RUNNING_TYPES, MIN_RUNS_PER_WEEK } from "@/lib/constants";
 import Link from "next/link";
 import { Share2 } from "lucide-react";
@@ -43,7 +44,7 @@ export function WeekCard({ weekNum, weekLabel, workouts, onSelectWorkout }: Week
             <span>{formatDistance(totalDistance)} | {completed}/{workouts.length} done</span>
             {completed > 0 && (
               <Link
-                href={`/recap?week=${weekNum}`}
+                href={`/recap?start=${getWeekBounds(sortedWorkouts[sortedWorkouts.length - 1].date).start}`}
                 aria-label={`Share ${weekLabel}`}
                 className="hover:text-foreground transition-colors"
               >

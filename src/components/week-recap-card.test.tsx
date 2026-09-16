@@ -9,6 +9,10 @@ import {
   weekHighlight,
 } from "@/lib/week-recap";
 
+/** Mondays of the two weeks these fixtures live in. */
+const WEEK3 = "2026-09-07";
+const WEEK1 = "2026-08-24";
+
 /** A full week: speed day, two easy runs, a long run and two lifts. */
 const fullWeek: RecapWorkout[] = [
   { date: "2026-09-07", weekNumber: 3, type: "upper_body", title: "Upper Body", completed: true },
@@ -27,8 +31,8 @@ const sparseWeek: RecapWorkout[] = [
   { date: "2026-08-30", weekNumber: 1, type: "easy", title: "Zone 2", completed: false, targetDistance: 5 },
 ];
 
-function render(workouts: RecapWorkout[], weekNumber: number, mode: RecapMode = "runs"): string {
-  const recap = buildWeekRecap(workouts, weekNumber, mode)!;
+function render(workouts: RecapWorkout[], weekStart: string, mode: RecapMode = "runs"): string {
+  const recap = buildWeekRecap(workouts, weekStart, mode)!;
   const svg = renderToStaticMarkup(
     <WeekRecapCard
       recap={recap}
@@ -56,10 +60,10 @@ function text(svg: string): string {
 
 describe("WeekRecapCard", () => {
   it("puts the week's headline numbers on the runs-only card", () => {
-    const words = text(render(fullWeek, 3));
+    const words = text(render(fullWeek, WEEK3));
     expect(words).toContain("25.1"); // total km
     expect(words).toContain("5:37"); // fastest pace
-    expect(words).toContain("4/4 runs");
+    expect(words).toContain("4 runs");
     // The caption wraps across two lines, so it arrives in two pieces.
     expect(words).toContain("s/o to me for putting in | the work");
     expect(words).toContain("EVERY RUN ON THE BOARD");
@@ -69,26 +73,51 @@ describe("WeekRecapCard", () => {
   });
 
   it("lists the lifts alongside the runs in all mode, without moving the numbers", () => {
-    const words = text(render(fullWeek, 3, "all"));
-    expect(words).toContain("4/4 runs · 2 lifts");
+    const words = text(render(fullWeek, WEEK3, "all"));
+    expect(words).toContain("4 runs · 2 lifts");
     expect(words).toContain("Upper Body");
     expect(words).toContain("Lower Body");
-    expect(words).toContain("STRENGTH"); // the row tag, where a pace sits
+    expect(words).not.toContain("STRENGTH"); // no tag repeating the title
     expect(words).toContain("25.1"); // lifts add no distance
   });
 
   it("renders a week where a run has no pace and days sit empty", () => {
-    const words = text(render(sparseWeek, 1));
+    const words = text(render(sparseWeek, WEEK1));
     expect(words).toContain("8.5"); // 4 target km + 4.48 measured
-    expect(words).toContain("2 OF 4 RUNS IN THE BANK");
-    expect(words).toContain("50% OF PLANNED RUNS DONE");
+    expect(words).toContain("2 RUNS IN THE BANK");
+    expect(words).toContain("2/4 PLANNED RUNS DONE");
+  });
+
+  it("keeps an overflowing week inside the card", () => {
+    // Nine entries in one week: seven rows plus the "+N more" line, and the
+    // list must stay above the footer rule at y=1284.
+    const busy = [
+      ...fullWeek,
+      { date: "2026-09-09", weekNumber: 3, type: "cross_training", title: "Cross Training", completed: true, actualDuration: 4907 },
+      { date: "2026-09-11", weekNumber: 3, type: "cross_training", title: "Cross Training", completed: true, actualDuration: 3194 },
+      { date: "2026-09-12", weekNumber: 3, type: "swim", title: "Swim", completed: true, actualDuration: 1075 },
+    ];
+    const svg = render(busy, WEEK3, "all");
+    const words = text(svg);
+    expect(words).toContain("+2 more sessions");
+    // Every run still has its row; only sessions were dropped.
+    expect(words).toContain("5x800m @ 4:50");
+    expect(words).toContain("Zone 2");
+    expect(words).toContain("Partner run");
+    expect(words).toContain("Long run");
+    const lastY = Math.max(
+      ...[...svg.matchAll(/<text[^>]*\sy="(\d+(?:\.\d+)?)"[^>]*>(?:(?!<\/text>).)*more sessions/g)].map(
+        (m) => Number(m[1])
+      )
+    );
+    expect(lastY).toBeLessThan(1284);
   });
 
   it("never emits a NaN coordinate, whatever the week holds", () => {
-    expect(render(fullWeek, 3)).not.toContain("NaN");
-    expect(render(fullWeek, 3, "all")).not.toContain("NaN");
-    expect(render(sparseWeek, 1)).not.toContain("NaN");
+    expect(render(fullWeek, WEEK3)).not.toContain("NaN");
+    expect(render(fullWeek, WEEK3, "all")).not.toContain("NaN");
+    expect(render(sparseWeek, WEEK1)).not.toContain("NaN");
     // A single completed run: the bar scale and the row band both degrade to one.
-    expect(render([sparseWeek[0]], 1)).not.toContain("NaN");
+    expect(render([sparseWeek[0]], WEEK1)).not.toContain("NaN");
   });
 });

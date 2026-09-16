@@ -19,6 +19,28 @@ import {
   weeksWithRuns,
 } from "@/lib/week-recap";
 
+/**
+ * Pre-plan weeks all carry week number 0, so they get dated pills instead of
+ * seven identical "Pre-plan" chips.
+ */
+function weekPillLabel(workouts: { date: string; weekNumber: number }[], weekStart: string): string {
+  const weekNumber = workouts
+    .filter((w) => w.date >= weekStart)
+    .filter((w) => w.date <= addSixDays(weekStart))
+    .reduce((max, w) => Math.max(max, w.weekNumber), 0);
+  if (weekNumber > 0) return `Week ${weekNumber}`;
+  return new Date(weekStart + "T12:00:00").toLocaleDateString("en-CA", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function addSixDays(date: string): string {
+  const d = new Date(date + "T12:00:00");
+  d.setDate(d.getDate() + 6);
+  return d.toISOString().slice(0, 10);
+}
+
 const GOAL_LABEL = `Sub-${GOAL_TIME_MINUTES} · ${new Date(RACE_DATE + "T12:00:00").toLocaleDateString(
   "en-CA",
   { month: "short", day: "numeric" }
@@ -26,13 +48,12 @@ const GOAL_LABEL = `Sub-${GOAL_TIME_MINUTES} · ${new Date(RACE_DATE + "T12:00:0
 
 export function WeekRecapView() {
   const searchParams = useSearchParams();
-  const weekParam = Number(searchParams.get("week"));
+  // ?start=YYYY-MM-DD names a calendar week; the plan page links straight to one.
+  const weekParam = searchParams.get("start");
   const allWorkouts = useQuery(api.workouts.getAllWorkouts);
   const plan = useQuery(api.workouts.getTrainingPlan);
 
-  const [selectedWeek, setSelectedWeek] = useState<number | null>(
-    Number.isFinite(weekParam) && searchParams.get("week") ? weekParam : null
-  );
+  const [selectedWeek, setSelectedWeek] = useState<string | null>(weekParam);
   // Null until the athlete types: the caption then follows the week they pick.
   const [captionOverride, setCaptionOverride] = useState<string | null>(null);
   const [mode, setMode] = useState<RecapMode>("runs");
@@ -50,6 +71,7 @@ export function WeekRecapView() {
   // Land on the most recent week with runs in it, unless a link named one.
   const week =
     selectedWeek !== null && weeks.includes(selectedWeek) ? selectedWeek : weeks[weeks.length - 1];
+
   const recap = useMemo(
     () => (week === undefined ? null : buildWeekRecap(workouts, week, mode)),
     [workouts, week, mode]
@@ -70,7 +92,7 @@ export function WeekRecapView() {
     );
   }
 
-  const filename = `week-${recap.weekNumber}-recap${mode === "all" ? "-all" : ""}.png`;
+  const filename = `${recap.weekStart}-recap${mode === "all" ? "-all" : ""}.png`;
 
   async function withCard(action: (blob: Blob) => Promise<void> | void) {
     if (!svgRef.current) return;
@@ -111,7 +133,7 @@ export function WeekRecapView() {
                 : "bg-background text-muted-foreground border-border hover:text-foreground"
             }`}
           >
-            {w === 0 ? "Pre-plan" : `Week ${w}`}
+            {weekPillLabel(workouts, w)}
           </button>
         ))}
       </div>

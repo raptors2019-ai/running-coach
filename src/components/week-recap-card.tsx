@@ -2,7 +2,7 @@
 
 import { forwardRef } from "react";
 import { formatDuration } from "@/lib/pace-utils";
-import { truncate, WeekRecap, wrapText } from "@/lib/week-recap";
+import { selectRows, truncate, WeekRecap, wrapText } from "@/lib/week-recap";
 
 export const RECAP_WIDTH = 1080;
 export const RECAP_HEIGHT = 1350;
@@ -28,11 +28,24 @@ const HIGHLIGHT_Y = 400;
 const HERO_LABEL_Y = 470;
 const HERO_Y = 588;
 const STAT_VALUE_Y = 686;
-const BARS_BASE = 906;
-const BAR_MAX = 110;
-const ROWS_BAND_TOP = 1000;
+const BARS_BASE = 890;
+const BAR_MAX = 96;
+const ROWS_BAND_TOP = 984;
 const ROWS_BAND_BOTTOM = 1284;
-const MAX_ROWS = 6;
+/** Rows the band fits, counting the "+N more" line when one is needed. */
+const MAX_ROWS = 8;
+
+/**
+ * Row height and type size per row count. A week with lifts in it runs to
+ * twice the rows of a runs-only week, so the list tightens instead of
+ * spilling everything past the first five into "+N more".
+ */
+const ROW_METRICS: Record<number, { height: number; font: number }> = {
+  6: { height: 46, font: 29 },
+  7: { height: 41, font: 27 },
+  8: { height: 36, font: 24 },
+};
+const DEFAULT_ROW_METRICS = { height: 52, font: 30 };
 
 interface WeekRecapCardProps {
   recap: WeekRecap;
@@ -72,16 +85,14 @@ function Stat({ x, value, label, anchor = "start" }: {
 export const WeekRecapCard = forwardRef<SVGSVGElement, WeekRecapCardProps>(
   function WeekRecapCard({ recap, caption, highlight, raceName, goalLabel, daysToRace }, ref) {
     const captionLines = wrapText(caption, CAPTION_CHARS, CAPTION_LINES);
-    const rows = recap.entries.slice(0, MAX_ROWS);
-    const hiddenRows = recap.entries.length - rows.length;
+    const { rows, hidden: hiddenRows } = selectRows(recap.entries, MAX_ROWS);
 
     // Centre the run list in the band between the bars and the footer, so a
     // two-run week doesn't leave a hole under it.
     const rowCount = rows.length + (hiddenRows > 0 ? 1 : 0);
-    // An "all" week can run to six rows; they tighten up rather than overflow.
-    const rowHeight = rowCount > 5 ? 46 : 50;
+    const { height: rowHeight, font: rowFont } = ROW_METRICS[rowCount] ?? DEFAULT_ROW_METRICS;
     const rowsTop =
-      ROWS_BAND_TOP + (ROWS_BAND_BOTTOM - ROWS_BAND_TOP - rowCount * rowHeight) / 2 + 34;
+      ROWS_BAND_TOP + (ROWS_BAND_BOTTOM - ROWS_BAND_TOP - rowCount * rowHeight) / 2 + rowFont;
 
     const maxKm = Math.max(...recap.days.map((d) => d.km), 1);
     const barSlot = (RECAP_WIDTH - PAD * 2) / 7;
@@ -165,7 +176,7 @@ export const WeekRecapCard = forwardRef<SVGSVGElement, WeekRecapCardProps>(
           <tspan fill={ACCENT} fontSize={58} fontWeight={800} letterSpacing={0}>{" km"}</tspan>
         </text>
         <text x={RIGHT} y={HERO_Y} textAnchor="end" fill={MUTED} fontFamily={FONT} fontSize={30} fontWeight={700}>
-          {recap.plannedRuns > 0 ? `${recap.runCount}/${recap.plannedRuns} runs` : `${recap.runCount} runs`}
+          {`${recap.runCount} ${recap.runCount === 1 ? "run" : "runs"}`}
           {recap.mode === "all" && recap.supportSummary ? ` · ${recap.supportSummary}` : ""}
         </text>
 
@@ -174,7 +185,7 @@ export const WeekRecapCard = forwardRef<SVGSVGElement, WeekRecapCardProps>(
         <Stat x={PAD + 240} value={recap.totalSeconds > 0 ? formatDuration(recap.totalSeconds) : "—"} label="MOVING" />
         <Stat x={PAD + 590} value={recap.avgPace ?? "—"} label="AVG /KM" />
         <Stat x={RIGHT} value={recap.fastestPace ?? "—"} label="FASTEST /KM" anchor="end" />
-        <rect x={PAD} y={766} width={RECAP_WIDTH - PAD * 2} height={2} fill={HAIRLINE} />
+        <rect x={PAD} y={748} width={RECAP_WIDTH - PAD * 2} height={2} fill={HAIRLINE} />
 
         {/* Daily bars */}
         {recap.days.map((day, i) => {
@@ -237,7 +248,7 @@ export const WeekRecapCard = forwardRef<SVGSVGElement, WeekRecapCardProps>(
           const badge = entry.isFastest ? "FASTEST" : entry.isLongest ? "LONGEST" : null;
           return (
             <g key={entry.date + entry.title}>
-              <text x={PAD} y={y} fill={MUTED} fontFamily={FONT} fontSize={28} fontWeight={700} letterSpacing={1}>
+              <text x={PAD} y={y} fill={MUTED} fontFamily={FONT} fontSize={rowFont - 2} fontWeight={700} letterSpacing={1}>
                 {entry.day.toUpperCase()}
               </text>
               <text
@@ -245,13 +256,22 @@ export const WeekRecapCard = forwardRef<SVGSVGElement, WeekRecapCardProps>(
                 y={y}
                 fill={entry.isRun ? "#FFFFFF" : MUTED}
                 fontFamily={FONT}
-                fontSize={30}
+                fontSize={rowFont}
                 fontWeight={600}
               >
-                {truncate(entry.title, badge ? 18 : 30)}
+                {truncate(entry.title, badge ? 20 : 30)}
               </text>
               {badge && (
-                <text x={PAD + 422} y={y} fill={ACCENT} fontFamily={FONT} fontSize={22} fontWeight={800} letterSpacing={2}>
+                <text
+                  x={RIGHT - 320}
+                  y={y}
+                  textAnchor="end"
+                  fill={ACCENT}
+                  fontFamily={FONT}
+                  fontSize={rowFont - 8}
+                  fontWeight={800}
+                  letterSpacing={2}
+                >
                   {badge}
                 </text>
               )}
@@ -261,14 +281,10 @@ export const WeekRecapCard = forwardRef<SVGSVGElement, WeekRecapCardProps>(
                 textAnchor="end"
                 fill={entry.isRun ? "#FFFFFF" : MUTED}
                 fontFamily={FONT}
-                fontSize={30}
+                fontSize={rowFont}
                 fontWeight={700}
               >
-                {entry.isRun
-                  ? `${entry.distanceKm.toFixed(2)} km`
-                  : entry.durationSeconds
-                    ? formatDuration(entry.durationSeconds)
-                    : ""}
+                {entry.isRun ? `${entry.distanceKm.toFixed(2)} km` : ""}
               </text>
               <text
                 x={RIGHT}
@@ -276,17 +292,22 @@ export const WeekRecapCard = forwardRef<SVGSVGElement, WeekRecapCardProps>(
                 textAnchor="end"
                 fill={entry.isFastest ? ACCENT : MUTED}
                 fontFamily={FONT}
-                fontSize={entry.isRun ? 30 : 22}
-                fontWeight={entry.isRun ? 700 : 800}
-                letterSpacing={entry.isRun ? 0 : 2}
+                fontSize={rowFont}
+                fontWeight={700}
               >
-                {entry.isRun ? (entry.pace ? `${entry.pace}/km` : "—") : entry.categoryLabel}
+                {entry.isRun
+                  ? entry.pace
+                    ? `${entry.pace}/km`
+                    : "—"
+                  : entry.durationSeconds
+                    ? formatDuration(entry.durationSeconds)
+                    : "—"}
               </text>
             </g>
           );
         })}
         {hiddenRows > 0 && (
-          <text x={PAD} y={rowsTop + rows.length * rowHeight} fill={MUTED} fontFamily={FONT} fontSize={26} fontWeight={600}>
+          <text x={PAD} y={rowsTop + rows.length * rowHeight} fill={MUTED} fontFamily={FONT} fontSize={rowFont - 4} fontWeight={600}>
             +{hiddenRows} more {hiddenRows === 1 ? "session" : "sessions"}
           </text>
         )}
@@ -298,7 +319,7 @@ export const WeekRecapCard = forwardRef<SVGSVGElement, WeekRecapCardProps>(
         </text>
         <text x={RIGHT} y={1322} textAnchor="end" fill={MUTED} fontFamily={FONT} fontSize={28} fontWeight={600} letterSpacing={2}>
           {recap.plannedRuns > 0
-            ? `${recap.completionPct}% OF PLANNED RUNS DONE`
+            ? `${recap.plannedDone}/${recap.plannedRuns} PLANNED RUNS DONE`
             : `${recap.runCount} ${recap.runCount === 1 ? "RUN" : "RUNS"} LOGGED`}
         </text>
       </svg>
