@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SortableWorkoutRow } from "./sortable-workout-row";
 import { formatDistance, getLocalDateString } from "@/lib/pace-utils";
 import { RUNNING_TYPES, MIN_RUNS_PER_WEEK } from "@/lib/constants";
+import Link from "next/link";
+import { Share2 } from "lucide-react";
 
 interface WeekCardProps {
   weekNum: number;
@@ -39,6 +41,15 @@ export function WeekCard({ weekNum, weekLabel, workouts, onSelectWorkout }: Week
               <span className={quotaColor}>{runCount}/{minRuns} runs</span>
             )}
             <span>{formatDistance(totalDistance)} | {completed}/{workouts.length} done</span>
+            {completed > 0 && (
+              <Link
+                href={`/recap?week=${weekNum}`}
+                aria-label={`Share ${weekLabel}`}
+                className="hover:text-foreground transition-colors"
+              >
+                <Share2 className="h-4 w-4" />
+              </Link>
+            )}
           </div>
         </div>
       </CardHeader>
