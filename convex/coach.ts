@@ -10,6 +10,7 @@ import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { checkPasscode } from "./lib/passcode";
+import { workoutUpdatePatch } from "./lib/workoutUpdate";
 import { inferWeekNumber, getDayOfWeek, isRunningType } from "./lib/stravaMapping";
 import { swapPlanPatches } from "./lib/planSwap";
 import { splitsForPrompt } from "./lib/splitParsing";
@@ -522,6 +523,9 @@ export const coachUpdateWorkout = internalMutation({
     description: v.optional(v.string()),
     targetDistance: v.optional(v.number()),
     targetPace: v.optional(v.string()),
+    intervals: v.optional(
+      v.array(v.object({ distance: v.string(), pace: v.string(), rest: v.string(), reps: v.number() }))
+    ),
   },
   handler: async (ctx, args) => {
     const workout = await plannedWorkoutOn(ctx, args.date);
@@ -532,8 +536,7 @@ export const coachUpdateWorkout = internalMutation({
       throw new Error(`${workout.title} is a checkpoint/race workout — it can be moved, not replaced`);
     }
     const { date: _date, ...fields } = args;
-    const patch = Object.fromEntries(Object.entries(fields).filter(([, val]) => val !== undefined));
-    await ctx.db.patch(workout._id, patch);
+    await ctx.db.patch(workout._id, workoutUpdatePatch(fields));
     return `Updated ${args.date}: ${workout.title}`;
   },
 });
