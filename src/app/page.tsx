@@ -8,6 +8,7 @@ import { WeekPreview } from "@/components/week-preview";
 import { UpcomingDays } from "@/components/upcoming-days";
 import { JournalNudgeBanner } from "@/components/journal-nudge-banner";
 import { CheckpointCard } from "@/components/checkpoint-card";
+import { BreathworkCard } from "@/components/breathwork-card";
 import { WeatherOptimizerDialog } from "@/components/weather-optimizer-dialog";
 import { Button } from "@/components/ui/button";
 import { useAutoStravaSync } from "@/lib/use-auto-sync";
@@ -42,6 +43,8 @@ export default function HomePage() {
       {workouts && <WeekPreview workouts={workouts} />}
 
       <JournalNudgeBanner />
+
+      {workouts && <BreathworkCard workouts={workouts} />}
 
       {workouts && <UpcomingDays workouts={workouts} />}
 
