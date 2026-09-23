@@ -47,7 +47,7 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
   },
   {
     name: "update_workout",
-    description: "Modify the planned workout on a date. Only provided fields change. On a completed day this relabels what was done (type, title, description); logged numbers never change.",
+    description: "Modify the planned workout on a date. Only provided fields change. On a completed day this relabels what was done (type, title, description); logged numbers never change. When you change the paces or reps of an interval session, also send intervals so the rep table matches the description.",
     input_schema: {
       type: "object",
       properties: {
@@ -57,6 +57,20 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
         description: { type: "string" },
         target_distance: { type: "number", description: "km" },
         target_pace: { type: "string", description: "e.g. '6:45-7:15'" },
+        intervals: {
+          type: "array",
+          description: "Replaces the rep table shown on the workout card. Send [] to clear it.",
+          items: {
+            type: "object",
+            properties: {
+              distance: { type: "string", description: "e.g. '400m'" },
+              pace: { type: "string", description: "e.g. '4:40-4:45/km'" },
+              rest: { type: "string", description: "e.g. '90s jog'" },
+              reps: { type: "number" },
+            },
+            required: ["distance", "pace", "rest", "reps"],
+          },
+        },
       },
       required: ["date"],
     },
@@ -202,6 +216,7 @@ async function runTool(
         description: input.description,
         targetDistance: input.target_distance,
         targetPace: input.target_pace,
+        intervals: input.intervals,
       });
     case "move_workout":
       return await ctx.runMutation(internal.coach.coachMoveWorkout, {
