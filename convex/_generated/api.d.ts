@@ -21,6 +21,7 @@ import type * as lib_splitParsing from "../lib/splitParsing.js";
 import type * as lib_stravaMapping from "../lib/stravaMapping.js";
 import type * as lib_syncMatching from "../lib/syncMatching.js";
 import type * as lib_weatherOptimizer from "../lib/weatherOptimizer.js";
+import type * as lib_workoutUpdate from "../lib/workoutUpdate.js";
 import type * as seed from "../seed.js";
 import type * as splits from "../splits.js";
 import type * as splitsActions from "../splitsActions.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   "lib/stravaMapping": typeof lib_stravaMapping;
   "lib/syncMatching": typeof lib_syncMatching;
   "lib/weatherOptimizer": typeof lib_weatherOptimizer;
+  "lib/workoutUpdate": typeof lib_workoutUpdate;
   seed: typeof seed;
   splits: typeof splits;
   splitsActions: typeof splitsActions;
