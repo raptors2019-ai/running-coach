@@ -159,10 +159,7 @@ import {
   type StickerLayout,
 } from "@/lib/route-overlay";
 
-export const POP_SECONDS = 0.5;
-export function popStaggerSeconds(count: number): number {
-  return count <= 1 ? 0 : Math.min(0.3, 5 / count);
-}
+import { POP_SECONDS, popState, stickerTimeline, type PopState } from "@/lib/sticker-timeline";
 
 /** Where the month totals card sits in the sticker collage. */
 export const TOTALS_CARD = { x: 150, y: 1480, width: 780, height: 270 };
@@ -175,17 +172,37 @@ export interface RouteStickersSvgProps {
   layout: StickerLayout;
   /** Month totals card; omitted for a stickers-only frame. */
   totals?: StickerTotals;
-  /** Pop the stickers in one at a time. */
+  /** Pop the stickers in one at a time (CSS, runs on its own). */
   animate?: boolean;
+  /**
+   * Freeze the pop-in at this many seconds instead: one exact frame, for
+   * rendering video. Overrides `animate`.
+   */
+  at?: number;
   /** No background: for laying the stickers over video. */
   transparent?: boolean;
+  /** Solid black instead of the vignette (keys out cleanly with a Screen blend). */
+  black?: boolean;
   className?: string;
   title?: string;
 }
 
-export function RouteStickersSvg({ layout, totals, animate = false, transparent = false, className, title }: RouteStickersSvgProps) {
-  const stagger = popStaggerSeconds(layout.stickers.length);
-  const totalsDelay = layout.stickers.length * stagger + POP_SECONDS * 0.5;
+export function RouteStickersSvg({
+  layout,
+  totals,
+  animate: animateProp = false,
+  at,
+  transparent = false,
+  black = false,
+  className,
+  title,
+}: RouteStickersSvgProps) {
+  const timeline = stickerTimeline(layout.stickers.length, Boolean(totals));
+  const frozen = at !== undefined;
+  const animate = animateProp && !frozen;
+  // CSS delays are measured from mount, so drop the lead-in there.
+  const cssDelay = (start: number) => Math.max(0, start - timeline.startOf(0));
+  const popAt = (start: number): PopState | undefined => (frozen ? popState(at, start) : undefined);
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -205,8 +222,8 @@ export function RouteStickersSvg({ layout, totals, animate = false, transparent 
           `}</style>
         </defs>
       )}
-      {!transparent && <rect width={layout.width} height={layout.height} fill="url(#vignette)" />}
-      {!transparent && (
+      {!transparent && <rect width={layout.width} height={layout.height} fill={black ? "#000000" : "url(#vignette)"} />}
+      {!transparent && !black && (
         <defs>
           <radialGradient id="vignette" cx="50%" cy="45%" r="70%">
             <stop offset="0%" stopColor="#1A1512" />
@@ -215,23 +232,32 @@ export function RouteStickersSvg({ layout, totals, animate = false, transparent 
         </defs>
       )}
       {layout.stickers.map((s, i) => (
-        <StickerTile key={s.id} sticker={s} animate={animate} delay={i * stagger} />
+        <StickerTile key={s.id} sticker={s} animate={animate} delay={cssDelay(timeline.startOf(i))} pop={popAt(timeline.startOf(i))} />
       ))}
-      {totals && <TotalsCard totals={totals} animate={animate} delay={totalsDelay} />}
+      {totals && timeline.totalsAt !== null && (
+        <TotalsCard totals={totals} animate={animate} delay={cssDelay(timeline.totalsAt)} pop={popAt(timeline.totalsAt)} />
+      )}
     </svg>
   );
 }
 
 /** Month summary in the same voice as the stickers: title, then three stats. */
-function TotalsCard({ totals, animate, delay }: { totals: StickerTotals; animate: boolean; delay: number }) {
+function TotalsCard({ totals, animate, delay, pop }: { totals: StickerTotals; animate: boolean; delay: number; pop?: PopState }) {
   const { x, y, width, height } = TOTALS_CARD;
+  const transform = poppedTransform(x, y, width, height, 1, pop);
   const cols = [x + width * 0.2, x + width * 0.5, x + width * 0.8];
   const style = animate
     ? ({ "--tx": `${x}px`, "--ty": `${y}px`, "--s": "1", animationDelay: `${delay.toFixed(2)}s` } as React.CSSProperties)
     : undefined;
   const textShadow = "0 1px 6px rgba(0,0,0,.7)";
   return (
-    <g className={animate ? "sticker" : undefined} transform={animate ? undefined : `translate(${x} ${y})`} style={style} fontFamily={FONT}>
+    <g
+      className={animate ? "sticker" : undefined}
+      transform={animate ? undefined : transform}
+      opacity={pop ? pop.opacity : undefined}
+      style={style}
+      fontFamily={FONT}
+    >
       <rect width={width} height={height} rx={28} fill="rgba(0,0,0,0.55)" stroke="rgba(255,255,255,0.12)" />
       <text x={width / 2} y={64} textAnchor="middle" fill={ORANGE} fontSize={24} fontWeight={800} letterSpacing={6} style={{ textShadow }}>
         {totals.title.toUpperCase()}
@@ -254,9 +280,17 @@ function TotalsCard({ totals, animate, delay }: { totals: StickerTotals; animate
 const SHOE_PATH =
   "M3 16.5c0-.8.6-1.5 1.4-1.5h2.2c.9 0 1.7-.3 2.3-.9l1.4-1.4c.5-.5 1.2-.7 1.9-.5l1.1.3c.4.1.8 0 1.1-.3l1.2-1.2c.6-.6 1.5-.6 2.1 0l.3.3c.4.4.9.6 1.5.6H21v3.6c0 .8-.6 1.4-1.4 1.4H4.4c-.8 0-1.4-.6-1.4-1.4ZM3 19h18";
 
-function StickerTile({ sticker: s, animate, delay }: { sticker: Sticker; animate: boolean; delay: number }) {
+/** Transform for a tile popped to `pop`, scaling about the tile's centre. */
+function poppedTransform(x: number, y: number, w: number, h: number, scale: number, pop?: PopState): string {
+  const f = pop?.scale ?? 1;
+  const dx = (w * (1 - f)) / 2;
+  const dy = (h * (1 - f)) / 2;
+  return `translate(${(x + dx).toFixed(1)} ${(y + dy).toFixed(1)}) scale(${(scale * f).toFixed(3)})`;
+}
+
+function StickerTile({ sticker: s, animate, delay, pop }: { sticker: Sticker; animate: boolean; delay: number; pop?: PopState }) {
   const cols = [STICKER_WIDTH * 0.19, STICKER_WIDTH * 0.5, STICKER_WIDTH * 0.81];
-  const transform = `translate(${s.x.toFixed(1)} ${s.y.toFixed(1)}) scale(${s.scale.toFixed(3)})`;
+  const transform = poppedTransform(s.x, s.y, STICKER_WIDTH * s.scale, STICKER_HEIGHT * s.scale, s.scale, pop);
   const style = animate
     ? ({
         "--tx": `${s.x.toFixed(1)}px`,
@@ -270,6 +304,7 @@ function StickerTile({ sticker: s, animate, delay }: { sticker: Sticker; animate
     <g
       className={animate ? "sticker" : undefined}
       transform={animate ? undefined : transform}
+      opacity={pop ? pop.opacity : undefined}
       style={style}
       fontFamily={FONT}
     >
@@ -308,5 +343,25 @@ function StickerTile({ sticker: s, animate, delay }: { sticker: Sticker; animate
         <path d={SHOE_PATH} fill="none" stroke="#FFFFFF" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
       </g>
     </g>
+  );
+}
+
+/** One sticker on its own, at scale 1 with its origin at 0,0, for rasterising. */
+export function StickerTileSvg({ sticker }: { sticker: Sticker }) {
+  const local: Sticker = { ...sticker, x: 0, y: 0, scale: 1 };
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox={`0 0 ${STICKER_WIDTH} ${STICKER_HEIGHT}`} width={STICKER_WIDTH} height={STICKER_HEIGHT}>
+      <StickerTile sticker={local} animate={false} delay={0} />
+    </svg>
+  );
+}
+
+/** The totals card on its own, for rasterising. */
+export function TotalsCardSvg({ totals }: { totals: StickerTotals }) {
+  const { width, height } = TOTALS_CARD;
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox={`${TOTALS_CARD.x} ${TOTALS_CARD.y} ${width} ${height}`} width={width} height={height}>
+      <TotalsCard totals={totals} animate={false} delay={0} />
+    </svg>
   );
 }
