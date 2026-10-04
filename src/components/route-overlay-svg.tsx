@@ -147,3 +147,127 @@ function Stat({ x, value, label }: { x: number; value: string; label: string }) 
     </g>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Stickers: one Strava-style tile per run, scattered over the frame.
+
+import {
+  STICKER_HEIGHT,
+  STICKER_ROUTE_BOX,
+  STICKER_WIDTH,
+  type Sticker,
+  type StickerLayout,
+} from "@/lib/route-overlay";
+
+export const POP_SECONDS = 0.5;
+export function popStaggerSeconds(count: number): number {
+  return count <= 1 ? 0 : Math.min(0.3, 5 / count);
+}
+
+export interface RouteStickersSvgProps {
+  layout: StickerLayout;
+  /** Pop the stickers in one at a time. */
+  animate?: boolean;
+  /** No background: for laying the stickers over video. */
+  transparent?: boolean;
+  className?: string;
+  title?: string;
+}
+
+export function RouteStickersSvg({ layout, animate = false, transparent = false, className, title }: RouteStickersSvgProps) {
+  const stagger = popStaggerSeconds(layout.stickers.length);
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox={`0 0 ${layout.width} ${layout.height}`}
+      width={layout.width}
+      height={layout.height}
+      className={className}
+      role="img"
+      aria-label={`${title ?? "Runs"}: ${layout.stickers.length} run stickers`}
+    >
+      {animate && (
+        <defs>
+          <style>{`
+            .sticker { opacity: 0; animation: sticker-pop ${POP_SECONDS}s cubic-bezier(.2,.9,.3,1.2) forwards; }
+            @keyframes sticker-pop { from { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(calc(var(--s) * 0.6)); } to { opacity: 1; transform: translate(var(--tx), var(--ty)) scale(var(--s)); } }
+            @media (prefers-reduced-motion: reduce) { .sticker { animation-duration: 0.01s; } }
+          `}</style>
+        </defs>
+      )}
+      {!transparent && <rect width={layout.width} height={layout.height} fill="url(#vignette)" />}
+      {!transparent && (
+        <defs>
+          <radialGradient id="vignette" cx="50%" cy="45%" r="70%">
+            <stop offset="0%" stopColor="#1A1512" />
+            <stop offset="100%" stopColor={BG} />
+          </radialGradient>
+        </defs>
+      )}
+      {layout.stickers.map((s, i) => (
+        <StickerTile key={s.id} sticker={s} animate={animate} delay={i * stagger} />
+      ))}
+    </svg>
+  );
+}
+
+// Running-shoe glyph, drawn in a 24x24 box.
+const SHOE_PATH =
+  "M3 16.5c0-.8.6-1.5 1.4-1.5h2.2c.9 0 1.7-.3 2.3-.9l1.4-1.4c.5-.5 1.2-.7 1.9-.5l1.1.3c.4.1.8 0 1.1-.3l1.2-1.2c.6-.6 1.5-.6 2.1 0l.3.3c.4.4.9.6 1.5.6H21v3.6c0 .8-.6 1.4-1.4 1.4H4.4c-.8 0-1.4-.6-1.4-1.4ZM3 19h18";
+
+function StickerTile({ sticker: s, animate, delay }: { sticker: Sticker; animate: boolean; delay: number }) {
+  const cols = [STICKER_WIDTH * 0.19, STICKER_WIDTH * 0.5, STICKER_WIDTH * 0.81];
+  const transform = `translate(${s.x.toFixed(1)} ${s.y.toFixed(1)}) scale(${s.scale.toFixed(3)})`;
+  const style = animate
+    ? ({
+        "--tx": `${s.x.toFixed(1)}px`,
+        "--ty": `${s.y.toFixed(1)}px`,
+        "--s": s.scale.toFixed(3),
+        animationDelay: `${delay.toFixed(2)}s`,
+      } as React.CSSProperties)
+    : undefined;
+  const textShadow = "0 1px 6px rgba(0,0,0,.7)";
+  return (
+    <g
+      className={animate ? "sticker" : undefined}
+      transform={animate ? undefined : transform}
+      style={style}
+      fontFamily={FONT}
+    >
+      <path
+        d={s.d}
+        fill="none"
+        stroke={ORANGE}
+        strokeWidth={5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{ filter: "drop-shadow(0 1px 3px rgba(0,0,0,.6))" }}
+      />
+      <text
+        x={STICKER_WIDTH / 2}
+        y={STICKER_ROUTE_BOX.height + 36}
+        textAnchor="middle"
+        fill="#FFFFFF"
+        fontSize={20}
+        fontWeight={800}
+        letterSpacing={4}
+        style={{ textShadow }}
+      >
+        STRAVA
+      </text>
+      {(["Distance", "Pace", "Time"] as const).map((label, i) => (
+        <g key={label}>
+          <text x={cols[i]} y={STICKER_ROUTE_BOX.height + 64} textAnchor="middle" fill="#D6D0C9" fontSize={10.5} letterSpacing={0.5} style={{ textShadow }}>
+            {label}
+          </text>
+          <text x={cols[i]} y={STICKER_ROUTE_BOX.height + 86} textAnchor="middle" fill="#FFFFFF" fontSize={17} fontWeight={700} style={{ textShadow }}>
+            {i === 0 ? `${s.distance.toFixed(2)} km` : i === 1 ? s.pace : s.time}
+          </text>
+        </g>
+      ))}
+      <g transform={`translate(${STICKER_WIDTH / 2 - 14} ${STICKER_HEIGHT - 44}) scale(1.17)`}>
+        <path d={SHOE_PATH} fill="none" stroke="#FFFFFF" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+      </g>
+    </g>
+  );
+}

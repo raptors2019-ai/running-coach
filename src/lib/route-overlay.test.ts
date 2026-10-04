@@ -153,3 +153,74 @@ describe("month helpers", () => {
     expect(formatHours(1500)).toBe("25m");
   });
 });
+
+import {
+  layoutStickers,
+  formatPace,
+  formatStickerTime,
+  STICKER_WIDTH,
+  STICKER_HEIGHT,
+  STICKER_ROUTE_BOX,
+  EDGE_BLEED,
+} from "./route-overlay";
+
+describe("stickers", () => {
+  const mk = (id: string, distance: number, duration: number, day: number) => ({
+    id,
+    name: id,
+    date: `2026-09-${String(day).padStart(2, "0")}`,
+    distance,
+    duration,
+    polyline: encode([
+      [43.65 + day * 0.001, -79.38],
+      [43.66 + day * 0.001, -79.39 + day * 0.0005],
+      [43.655, -79.4],
+      [43.65 + day * 0.001, -79.38],
+    ]),
+  });
+  const runs = Array.from({ length: 18 }, (_, i) => mk(`r${i}`, 5 + (i % 6) * 3, 1500 + (i % 6) * 900, i + 1));
+
+  it("formats pace and time like Strava", () => {
+    expect(formatPace(315)).toBe("5:15 /km");
+    expect(formatPace(299.6)).toBe("5:00 /km");
+    expect(formatPace(NaN)).toBe("–");
+    expect(formatStickerTime(2730)).toBe("45m 30s");
+    expect(formatStickerTime(8460)).toBe("2h 21m");
+  });
+
+  it("makes one sticker per run, in date order, each mostly on the frame", () => {
+    const layout = layoutStickers(runs, { width: 1080, height: 1920, seed: 3 });
+    expect(layout.stickers).toHaveLength(18);
+    expect(layout.stickers.map((s) => s.date)).toEqual([...layout.stickers.map((s) => s.date)].sort());
+    for (const s of layout.stickers) {
+      const w = STICKER_WIDTH * s.scale;
+      const h = STICKER_HEIGHT * s.scale;
+      expect(s.x).toBeGreaterThanOrEqual(-w * EDGE_BLEED - 1e-6);
+      expect(s.x + w).toBeLessThanOrEqual(1080 + w * EDGE_BLEED + 1e-6);
+      expect(s.y).toBeGreaterThanOrEqual(-h * EDGE_BLEED - 1e-6);
+      expect(s.y + h).toBeLessThanOrEqual(1920 + h * EDGE_BLEED + 1e-6);
+    }
+  });
+
+  it("scales tiles by distance and fits the route into its box", () => {
+    const layout = layoutStickers(runs, { width: 1080, height: 1920 });
+    const byId = Object.fromEntries(layout.stickers.map((s) => [s.id, s]));
+    expect(byId.r5.scale).toBeGreaterThan(byId.r0.scale); // 20 km vs 5 km
+    expect(byId.r5.pace).toBe(formatPace(byId.r5.duration / byId.r5.distance));
+    const coords = [...byId.r0.d.matchAll(/[ML](-?[\d.]+) (-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+    for (const [x, y] of coords) {
+      expect(x).toBeGreaterThanOrEqual(STICKER_ROUTE_BOX.x - 0.1);
+      expect(x).toBeLessThanOrEqual(STICKER_ROUTE_BOX.x + STICKER_ROUTE_BOX.width + 0.1);
+      expect(y).toBeGreaterThanOrEqual(STICKER_ROUTE_BOX.y - 0.1);
+      expect(y).toBeLessThanOrEqual(STICKER_ROUTE_BOX.y + STICKER_ROUTE_BOX.height + 0.1);
+    }
+  });
+
+  it("is deterministic per seed and changes with it", () => {
+    const a = layoutStickers(runs, { width: 1080, height: 1920, seed: 7 });
+    const b = layoutStickers(runs, { width: 1080, height: 1920, seed: 7 });
+    const c = layoutStickers(runs, { width: 1080, height: 1920, seed: 8 });
+    expect(a).toEqual(b);
+    expect(a.stickers.map((s) => [s.x, s.y])).not.toEqual(c.stickers.map((s) => [s.x, s.y]));
+  });
+});
