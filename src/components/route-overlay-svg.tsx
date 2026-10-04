@@ -164,8 +164,17 @@ export function popStaggerSeconds(count: number): number {
   return count <= 1 ? 0 : Math.min(0.3, 5 / count);
 }
 
+/** Where the month totals card sits in the sticker collage. */
+export const TOTALS_CARD = { x: 150, y: 1480, width: 780, height: 270 };
+
+export interface StickerTotals extends OverlayTotals {
+  title: string; // e.g. "September 2026"
+}
+
 export interface RouteStickersSvgProps {
   layout: StickerLayout;
+  /** Month totals card; omitted for a stickers-only frame. */
+  totals?: StickerTotals;
   /** Pop the stickers in one at a time. */
   animate?: boolean;
   /** No background: for laying the stickers over video. */
@@ -174,8 +183,9 @@ export interface RouteStickersSvgProps {
   title?: string;
 }
 
-export function RouteStickersSvg({ layout, animate = false, transparent = false, className, title }: RouteStickersSvgProps) {
+export function RouteStickersSvg({ layout, totals, animate = false, transparent = false, className, title }: RouteStickersSvgProps) {
   const stagger = popStaggerSeconds(layout.stickers.length);
+  const totalsDelay = layout.stickers.length * stagger + POP_SECONDS * 0.5;
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -207,7 +217,36 @@ export function RouteStickersSvg({ layout, animate = false, transparent = false,
       {layout.stickers.map((s, i) => (
         <StickerTile key={s.id} sticker={s} animate={animate} delay={i * stagger} />
       ))}
+      {totals && <TotalsCard totals={totals} animate={animate} delay={totalsDelay} />}
     </svg>
+  );
+}
+
+/** Month summary in the same voice as the stickers: title, then three stats. */
+function TotalsCard({ totals, animate, delay }: { totals: StickerTotals; animate: boolean; delay: number }) {
+  const { x, y, width, height } = TOTALS_CARD;
+  const cols = [x + width * 0.2, x + width * 0.5, x + width * 0.8];
+  const style = animate
+    ? ({ "--tx": `${x}px`, "--ty": `${y}px`, "--s": "1", animationDelay: `${delay.toFixed(2)}s` } as React.CSSProperties)
+    : undefined;
+  const textShadow = "0 1px 6px rgba(0,0,0,.7)";
+  return (
+    <g className={animate ? "sticker" : undefined} transform={animate ? undefined : `translate(${x} ${y})`} style={style} fontFamily={FONT}>
+      <rect width={width} height={height} rx={28} fill="rgba(0,0,0,0.55)" stroke="rgba(255,255,255,0.12)" />
+      <text x={width / 2} y={64} textAnchor="middle" fill={ORANGE} fontSize={24} fontWeight={800} letterSpacing={6} style={{ textShadow }}>
+        {totals.title.toUpperCase()}
+      </text>
+      {(["Runs", "Km", "Time"] as const).map((label, i) => (
+        <g key={label}>
+          <text x={cols[i] - x} y={186} textAnchor="middle" fill="#FFFFFF" fontSize={58} fontWeight={700} letterSpacing={-2} style={{ textShadow }}>
+            {i === 0 ? String(totals.runs) : i === 1 ? totals.km.toFixed(1) : formatHours(totals.seconds)}
+          </text>
+          <text x={cols[i] - x} y={230} textAnchor="middle" fill="#D6D0C9" fontSize={18} letterSpacing={4} style={{ textShadow }}>
+            {label.toUpperCase()}
+          </text>
+        </g>
+      ))}
+    </g>
   );
 }
 

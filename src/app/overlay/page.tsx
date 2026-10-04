@@ -25,6 +25,7 @@ import {
   OVERLAY_WIDTH,
   RouteOverlaySvg,
   RouteStickersSvg,
+  TOTALS_CARD,
   staggerSeconds,
 } from "@/components/route-overlay-svg";
 
@@ -68,6 +69,7 @@ function OverlayPageInner() {
 
   const [mode, setMode] = useState<ViewMode>("stickers");
   const [seed, setSeed] = useState(1);
+  const [showTotals, setShowTotals] = useState(true);
   const [replayKey, setReplayKey] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -92,9 +94,17 @@ function OverlayPageInner() {
     [routes, overlayMode]
   );
   const stickers = useMemo(
-    () => layoutStickers(routes, { width: OVERLAY_WIDTH, height: OVERLAY_HEIGHT, seed }),
-    [routes, seed]
+    () =>
+      layoutStickers(routes, {
+        width: OVERLAY_WIDTH,
+        height: OVERLAY_HEIGHT,
+        seed,
+        reserve: showTotals ? TOTALS_CARD : undefined,
+      }),
+    [routes, seed, showTotals]
   );
+  const monthTotals = useMemo(() => ({ ...overlayTotals(routes), title: label }), [routes, label]);
+  const stickerTotals = showTotals ? monthTotals : undefined;
   const isStickers = mode === "stickers";
   const hasDrawing = isStickers ? stickers.stickers.length > 0 : layout.paths.length > 0;
   const drawn = useMemo(
@@ -134,7 +144,7 @@ function OverlayPageInner() {
   const download = (transparent = false) => {
     const svg = renderToStaticMarkup(
       isStickers ? (
-        <RouteStickersSvg layout={stickers} transparent={transparent} title={label} />
+        <RouteStickersSvg layout={stickers} totals={stickerTotals} transparent={transparent} title={label} />
       ) : (
         <RouteOverlaySvg layout={layout} totals={totals} title={label} />
       )
@@ -181,7 +191,14 @@ function OverlayPageInner() {
             {syncing ? "Pulling routes from Strava…" : `No routes for ${label} yet.`}
           </div>
         ) : isStickers ? (
-          <RouteStickersSvg key={`${replayKey}-${seed}`} layout={stickers} title={label} animate className="w-full h-full" />
+          <RouteStickersSvg
+            key={`${replayKey}-${seed}-${showTotals}`}
+            layout={stickers}
+            totals={stickerTotals}
+            title={label}
+            animate
+            className="w-full h-full"
+          />
         ) : (
           <RouteOverlaySvg
             key={replayKey}
@@ -232,7 +249,12 @@ function OverlayPageInner() {
           </Button>
         ) : null}
         {isStickers ? (
-          <Button variant="outline" size="sm" className="col-span-2" onClick={sync} disabled={syncing || !stravaAuth}>
+          <Button variant="outline" size="sm" onClick={() => setShowTotals((v) => !v)} disabled={!hasDrawing}>
+            {showTotals ? "Hide totals" : "Show totals"}
+          </Button>
+        ) : null}
+        {isStickers ? (
+          <Button variant="outline" size="sm" onClick={sync} disabled={syncing || !stravaAuth}>
             <RefreshCw className={syncing ? "animate-spin" : ""} /> {syncing ? "Syncing" : "Sync Strava"}
           </Button>
         ) : null}

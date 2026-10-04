@@ -216,6 +216,18 @@ describe("stickers", () => {
     }
   });
 
+  it("keeps stickers out of a reserved rectangle", () => {
+    const reserve = { x: 200, y: 1500, width: 680, height: 260 };
+    const layout = layoutStickers(runs.slice(0, 12), { width: 1080, height: 1920, seed: 5, reserve });
+    for (const s of layout.stickers) {
+      const w = STICKER_WIDTH * s.scale;
+      const h = STICKER_HEIGHT * s.scale;
+      const overlapsX = s.x < reserve.x + reserve.width && s.x + w > reserve.x;
+      const overlapsY = s.y < reserve.y + reserve.height && s.y + h > reserve.y;
+      expect(overlapsX && overlapsY).toBe(false);
+    }
+  });
+
   it("is deterministic per seed and changes with it", () => {
     const a = layoutStickers(runs, { width: 1080, height: 1920, seed: 7 });
     const b = layoutStickers(runs, { width: 1080, height: 1920, seed: 7 });
