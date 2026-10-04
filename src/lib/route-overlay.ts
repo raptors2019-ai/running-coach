@@ -317,6 +317,8 @@ export interface StickerLayoutOptions {
   /** Smallest and largest sticker scale; longer runs get bigger tiles. */
   minScale?: number;
   maxScale?: number;
+  /** A rectangle stickers must stay out of, e.g. the month totals card. */
+  reserve?: { x: number; y: number; width: number; height: number };
 }
 
 /**
@@ -340,13 +342,21 @@ export function layoutStickers(routes: OverlayRoute[], options: StickerLayoutOpt
   // Longest runs first so the big tiles claim space before the small ones.
   const ordered = [...decoded].sort((a, b) => b.route.distance - a.route.distance);
 
-  const placed: { x: number; y: number; w: number; h: number }[] = [];
-  const overlapArea = (a: { x: number; y: number; w: number; h: number }) =>
-    placed.reduce((sum, b) => {
-      const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
-      const iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
-      return sum + ix * iy;
-    }, 0);
+  type Rect = { x: number; y: number; w: number; h: number };
+  const intersection = (a: Rect, b: Rect) => {
+    const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+    const iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+    return ix * iy;
+  };
+  const reserve: Rect | null = options.reserve
+    ? { x: options.reserve.x, y: options.reserve.y, w: options.reserve.width, h: options.reserve.height }
+    : null;
+  const placed: Rect[] = [];
+  // Overlap with other stickers is a cost to minimise; overlap with the
+  // reserved card is ruled out while any clear spot can be found.
+  const overlapArea = (a: Rect) =>
+    placed.reduce((sum, b) => sum + intersection(a, b), 0) +
+    (reserve && intersection(a, reserve) > 0 ? Number.MAX_SAFE_INTEGER / 2 : 0);
 
   const stickers: Sticker[] = ordered.map(({ route, points }) => {
     const scale = minScale + (maxScale - minScale) * Math.sqrt(route.distance / maxDistance);
