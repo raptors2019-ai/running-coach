@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAction, useQuery } from "convex/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ChevronLeft, ChevronRight, Download, RefreshCw, RotateCcw, Shuffle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, RefreshCw, RotateCcw, Shuffle, Video } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +18,7 @@ import {
   type OverlayRoute,
   type OverlayTotals,
 } from "@/lib/route-overlay";
+import { recordStickerVideo } from "@/lib/sticker-video";
 import {
   DRAW_SECONDS,
   OVERLAY_AREA,
@@ -28,6 +29,9 @@ import {
   TOTALS_CARD,
   staggerSeconds,
 } from "@/components/route-overlay-svg";
+
+/** Strava activity types that count as a run. */
+const RUN_TYPES = new Set(["Run", "TrailRun", "VirtualRun"]);
 
 type ViewMode = OverlayMode | "stickers";
 
@@ -70,6 +74,9 @@ function OverlayPageInner() {
   const [mode, setMode] = useState<ViewMode>("stickers");
   const [seed, setSeed] = useState(1);
   const [showTotals, setShowTotals] = useState(true);
+  const [runsOnly, setRunsOnly] = useState(true);
+  const [recording, setRecording] = useState<number | null>(null); // 0..1 while recording
+  const [recordError, setRecordError] = useState<string | null>(null);
   const [replayKey, setReplayKey] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -77,7 +84,9 @@ function OverlayPageInner() {
 
   const routes: OverlayRoute[] = useMemo(
     () =>
-      (rows ?? []).map((r) => ({
+      (rows ?? [])
+        .filter((r) => !runsOnly || RUN_TYPES.has(r.type))
+        .map((r) => ({
         id: r.stravaId,
         name: r.name,
         date: r.date,
@@ -85,8 +94,9 @@ function OverlayPageInner() {
         duration: r.duration,
         polyline: r.polyline,
       })),
-    [rows]
+    [rows, runsOnly]
   );
+  const otherCount = (rows ?? []).filter((r) => !RUN_TYPES.has(r.type)).length;
 
   const overlayMode: OverlayMode = mode === "stickers" ? "map" : mode;
   const layout = useMemo(
@@ -166,6 +176,28 @@ function OverlayPageInner() {
       a.click();
     };
     img.src = url;
+  };
+
+  const record = async () => {
+    setRecordError(null);
+    setRecording(0);
+    try {
+      const video = await recordStickerVideo({
+        layout: stickers,
+        totals: stickerTotals,
+        onProgress: setRecording,
+      });
+      const url = URL.createObjectURL(video.blob);
+      const a = document.createElement("a");
+      a.download = `routes-${month}.${video.extension}`;
+      a.href = url;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      setRecordError(err instanceof Error ? err.message : "Recording failed");
+    } finally {
+      setRecording(null);
+    }
   };
 
   const isFuture = month >= currentMonth();
@@ -254,6 +286,11 @@ function OverlayPageInner() {
           </Button>
         ) : null}
         {isStickers ? (
+          <Button size="sm" variant="secondary" onClick={record} disabled={!hasDrawing || recording !== null}>
+            <Video /> {recording === null ? "Record video" : `Recording ${Math.round(recording * 100)}%`}
+          </Button>
+        ) : null}
+        {isStickers ? (
           <Button variant="outline" size="sm" onClick={sync} disabled={syncing || !stravaAuth}>
             <RefreshCw className={syncing ? "animate-spin" : ""} /> {syncing ? "Syncing" : "Sync Strava"}
           </Button>
@@ -261,6 +298,10 @@ function OverlayPageInner() {
       </div>
 
       {syncError && <p className="text-sm text-destructive">{syncError}</p>}
+      {recordError && <p className="text-sm text-destructive">{recordError}</p>}
+      {recording !== null && (
+        <p className="text-xs text-muted-foreground">Recording in real time, keep this tab open until it finishes.</p>
+      )}
       {stravaAuth === null && <p className="text-sm text-muted-foreground">Connect Strava in Settings to pull routes.</p>}
       {!isStickers && layout.away.length > 0 && (
         <p className="text-xs text-muted-foreground">
@@ -268,11 +309,22 @@ function OverlayPageInner() {
           {" "}({layout.away.map((r) => r.name).join(", ")}). Switch to &ldquo;Same start&rdquo; to include them.
         </p>
       )}
+      {otherCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setRunsOnly((v) => !v)}
+          className="text-xs text-muted-foreground underline underline-offset-2"
+        >
+          {runsOnly
+            ? `Runs only. Include ${otherCount} ride${otherCount === 1 ? "" : "s"}/walk${otherCount === 1 ? "" : "s"} too`
+            : "Showing rides and walks too. Runs only"}
+        </button>
+      )}
       {routes.length > 0 && (
         <p className="text-xs text-muted-foreground">
           {routes.length} run{routes.length === 1 ? "" : "s"} with GPS, {range.start} to {range.end}.
           {isStickers
-            ? " One sticker per run, bigger for longer runs. Transparent PNG drops straight onto a video."
+            ? " One sticker per run, bigger for longer runs. Transparent PNG drops onto a video; Record video gives the pop-in on black, use a Screen blend to key it out."
             : " Each route draws in on its own; routes you repeat glow brighter."}
         </p>
       )}
