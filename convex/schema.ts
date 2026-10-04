@@ -140,6 +140,23 @@ export default defineSchema({
   }).index("by_date", ["date"])
     .index("by_workout", ["workoutId"]),
 
+  // Route geometry per Strava activity, for the month-overlay art. Kept
+  // separate from `workouts` because a date holds one workout but the
+  // overlay wants every run's line, including unplanned extras.
+  activityRoutes: defineTable({
+    stravaId: v.string(),
+    name: v.string(),
+    type: v.string(),
+    date: v.string(), // YYYY-MM-DD local
+    startTime: v.string(), // start_date_local
+    distance: v.number(), // km
+    duration: v.number(), // moving seconds
+    polyline: v.string(), // Google encoded polyline (Strava summary_polyline)
+    startLat: v.optional(v.number()),
+    startLng: v.optional(v.number()),
+  }).index("by_strava_id", ["stravaId"])
+    .index("by_date", ["date"]),
+
   weatherCache: defineTable({
     date: v.string(),
     temperature: v.number(),

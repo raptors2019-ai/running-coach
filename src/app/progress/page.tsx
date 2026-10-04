@@ -5,6 +5,7 @@ import { WeeklyVolumeChart } from "@/components/weekly-volume-chart";
 import { RacePrediction } from "@/components/race-prediction";
 import { RecentRuns } from "@/components/recent-runs";
 import { CountdownBadge } from "@/components/countdown-badge";
+import { RouteOverlayLink } from "@/components/route-overlay-link";
 
 export default function ProgressPage() {
   return (
@@ -15,6 +16,7 @@ export default function ProgressPage() {
       </div>
       <RacePrediction />
       <RecentRuns />
+      <RouteOverlayLink />
       <PaceChart />
       <WeeklyVolumeChart />
     </div>

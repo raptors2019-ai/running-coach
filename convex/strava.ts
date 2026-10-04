@@ -77,46 +77,72 @@ export interface StravaActivity {
 
 const DEFAULT_LOOKBACK_DAYS = 30;
 
-async function fetchStravaActivities(
-  ctx: ActionCtx,
-  lookbackDays: number = DEFAULT_LOOKBACK_DAYS
-): Promise<StravaActivity[]> {
+/**
+ * A valid Strava access token for the connected athlete, refreshing (and
+ * persisting) it when the stored one has expired.
+ */
+export async function getStravaAccessToken(ctx: ActionCtx): Promise<string> {
   const auth = await ctx.runQuery(internal.strava.getStravaAuthInternal);
   if (!auth) {
     throw new Error("Not connected to Strava");
   }
 
-  let accessToken: string = auth.accessToken;
-
-  if (auth.expiresAt < Date.now() / 1000) {
-    const clientId = process.env.STRAVA_CLIENT_ID;
-    const clientSecret = process.env.STRAVA_CLIENT_SECRET;
-
-    const refreshResponse = await fetch("https://www.strava.com/oauth/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        client_id: clientId,
-        client_secret: clientSecret,
-        refresh_token: auth.refreshToken,
-        grant_type: "refresh_token",
-      }),
-    });
-
-    if (!refreshResponse.ok) {
-      throw new Error("Failed to refresh Strava token");
-    }
-
-    const refreshData = await refreshResponse.json();
-    accessToken = refreshData.access_token;
-
-    await ctx.runMutation(internal.strava.saveStravaAuth, {
-      accessToken: refreshData.access_token,
-      refreshToken: refreshData.refresh_token,
-      expiresAt: refreshData.expires_at,
-      athleteId: auth.athleteId,
-    });
+  if (auth.expiresAt >= Date.now() / 1000) {
+    return auth.accessToken;
   }
+
+  const clientId = process.env.STRAVA_CLIENT_ID;
+  const clientSecret = process.env.STRAVA_CLIENT_SECRET;
+
+  const refreshResponse = await fetch("https://www.strava.com/oauth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: auth.refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  if (!refreshResponse.ok) {
+    throw new Error("Failed to refresh Strava token");
+  }
+
+  const refreshData = await refreshResponse.json();
+
+  await ctx.runMutation(internal.strava.saveStravaAuth, {
+    accessToken: refreshData.access_token,
+    refreshToken: refreshData.refresh_token,
+    expiresAt: refreshData.expires_at,
+    athleteId: auth.athleteId,
+  });
+
+  return refreshData.access_token;
+}
+
+/**
+ * One readable line for a failed Strava response. The body matters: a 403
+ * with `Application … Inactive` means Strava switched the API app off (the
+ * owning account needs a Strava subscription), not that the token is bad.
+ */
+export async function stravaFailure(response: Response, context?: string): Promise<string> {
+  const body = await response.text().catch(() => "");
+  const where = context ? ` (${context}, HTTP ${response.status})` : ` (HTTP ${response.status})`;
+  if (/"code":"Inactive"/.test(body)) {
+    return `Strava API app is inactive${where}: Strava now requires a subscription on the account that owns the API app. Reactivate it at strava.com/settings/api.`;
+  }
+  if (response.status === 429) {
+    return `Strava rate limited the request${where}, try again in a few minutes`;
+  }
+  return `Failed to fetch Strava activities${where}${body ? `: ${body.slice(0, 200)}` : ""}`;
+}
+
+async function fetchStravaActivities(
+  ctx: ActionCtx,
+  lookbackDays: number = DEFAULT_LOOKBACK_DAYS
+): Promise<StravaActivity[]> {
+  const accessToken = await getStravaAccessToken(ctx);
 
   const after = Math.floor(Date.now() / 1000) - lookbackDays * 24 * 60 * 60;
   // With `after`, Strava returns activities OLDEST first — so the window must
@@ -142,9 +168,7 @@ async function fetchStravaActivities(
     );
 
     if (!response.ok) {
-      throw new Error(
-        `Failed to fetch Strava activities (page ${page}, HTTP ${response.status}${response.status === 429 ? " — rate limited, try again in a few minutes" : ""})`
-      );
+      throw new Error(await stravaFailure(response, `page ${page}`));
     }
 
     const batch: typeof activities = await response.json();
