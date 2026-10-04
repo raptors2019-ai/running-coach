@@ -229,3 +229,165 @@ export function shiftMonth(month: string, delta: number): string {
   const d = new Date(Date.UTC(y, m - 1 + delta, 1));
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
+
+// ---------------------------------------------------------------------------
+// Sticker layout: each run as its own Strava-style tile (route outline above
+// distance / pace / time), scattered over the frame like a recap reel.
+
+export const STICKER_WIDTH = 240;
+export const STICKER_HEIGHT = 290;
+/** Box at the top of a sticker that the route outline is fitted into. */
+export const STICKER_ROUTE_BOX = { x: 20, y: 0, width: 200, height: 150 };
+
+export interface Sticker {
+  id: string;
+  name: string;
+  date: string;
+  distance: number;
+  duration: number;
+  pace: string; // "5:15 /km"
+  time: string; // "45m 30s"
+  /** Route path in sticker-local coordinates (0..STICKER_WIDTH). */
+  d: string;
+  x: number;
+  y: number;
+  scale: number;
+}
+
+export interface StickerLayout {
+  width: number;
+  height: number;
+  stickers: Sticker[];
+}
+
+export function formatPace(secondsPerKm: number): string {
+  if (!isFinite(secondsPerKm) || secondsPerKm <= 0) return "–";
+  const m = Math.floor(secondsPerKm / 60);
+  const s = Math.round(secondsPerKm % 60);
+  return s === 60 ? `${m + 1}:00 /km` : `${m}:${String(s).padStart(2, "0")} /km`;
+}
+
+/** "45m 30s" under an hour, "2h 21m" from an hour up, as Strava shows it. */
+export function formatStickerTime(seconds: number): string {
+  if (seconds >= 3600) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    return `${h}h ${m}m`;
+  }
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return `${m}m ${s}s`;
+}
+
+/** Small deterministic PRNG so a seed always gives the same scatter. */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function routePathInBox(points: LatLng[], box: { x: number; y: number; width: number; height: number }): string {
+  const xy = project(points, points[0][0]);
+  const minX = Math.min(...xy.map((p) => p.x));
+  const maxX = Math.max(...xy.map((p) => p.x));
+  const minY = Math.min(...xy.map((p) => p.y));
+  const maxY = Math.max(...xy.map((p) => p.y));
+  const spanX = Math.max(maxX - minX, 1);
+  const spanY = Math.max(maxY - minY, 1);
+  const scale = Math.min(box.width / spanX, box.height / spanY);
+  const ox = box.x + (box.width - spanX * scale) / 2;
+  const oy = box.y + (box.height - spanY * scale) / 2;
+  return xy
+    .map((p, i) => `${i === 0 ? "M" : "L"}${(ox + (p.x - minX) * scale).toFixed(1)} ${(oy + (p.y - minY) * scale).toFixed(1)}`)
+    .join("");
+}
+
+/** Fraction of a sticker allowed to hang past the frame edge. */
+export const EDGE_BLEED = 0.1;
+
+export interface StickerLayoutOptions {
+  width: number;
+  height: number;
+  seed?: number;
+  /** Smallest and largest sticker scale; longer runs get bigger tiles. */
+  minScale?: number;
+  maxScale?: number;
+}
+
+/**
+ * Scatter one sticker per run across the frame. Placement is random but
+ * seeded, and each tile is dropped where it overlaps the others least, so
+ * the result reads as a collage rather than a pile. Tiles may hang off the
+ * edge a little, as they do in the reels.
+ */
+export function layoutStickers(routes: OverlayRoute[], options: StickerLayoutOptions): StickerLayout {
+  const { width, height } = options;
+  const minScale = options.minScale ?? 0.55;
+  const maxScale = options.maxScale ?? 1.15;
+  const rand = mulberry32(options.seed ?? 1);
+
+  const decoded = routes
+    .map((route) => ({ route, points: decodePolyline(route.polyline) }))
+    .filter((r) => r.points.length >= 2);
+  if (decoded.length === 0) return { width, height, stickers: [] };
+
+  const maxDistance = Math.max(...decoded.map((r) => r.route.distance), 1);
+  // Longest runs first so the big tiles claim space before the small ones.
+  const ordered = [...decoded].sort((a, b) => b.route.distance - a.route.distance);
+
+  const placed: { x: number; y: number; w: number; h: number }[] = [];
+  const overlapArea = (a: { x: number; y: number; w: number; h: number }) =>
+    placed.reduce((sum, b) => {
+      const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+      const iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+      return sum + ix * iy;
+    }, 0);
+
+  const stickers: Sticker[] = ordered.map(({ route, points }) => {
+    const scale = minScale + (maxScale - minScale) * Math.sqrt(route.distance / maxDistance);
+    const w = STICKER_WIDTH * scale;
+    const h = STICKER_HEIGHT * scale;
+    // Allow a tenth of a tile past each edge, so the collage bleeds off the
+    // frame without losing the numbers.
+    const minX = -w * EDGE_BLEED;
+    const maxX = width - w * (1 - EDGE_BLEED);
+    const minY = -h * EDGE_BLEED;
+    const maxY = height - h * (1 - EDGE_BLEED);
+
+    let best = { x: 0, y: 0, w, h };
+    let bestOverlap = Infinity;
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const candidate = { x: minX + rand() * (maxX - minX), y: minY + rand() * (maxY - minY), w, h };
+      const overlap = overlapArea(candidate);
+      if (overlap < bestOverlap) {
+        best = candidate;
+        bestOverlap = overlap;
+      }
+      if (overlap === 0) break;
+    }
+    placed.push(best);
+
+    return {
+      id: route.id,
+      name: route.name,
+      date: route.date,
+      distance: route.distance,
+      duration: route.duration,
+      pace: formatPace(route.distance > 0 ? route.duration / route.distance : NaN),
+      time: formatStickerTime(route.duration),
+      d: routePathInBox(points, STICKER_ROUTE_BOX),
+      x: best.x,
+      y: best.y,
+      scale,
+    };
+  });
+
+  // Back to chronological order so the pop-in animation follows the month.
+  stickers.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  return { width, height, stickers };
+}

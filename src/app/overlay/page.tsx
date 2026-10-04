@@ -4,11 +4,12 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAction, useQuery } from "convex/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ChevronLeft, ChevronRight, Download, RefreshCw, RotateCcw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, RefreshCw, RotateCcw, Shuffle } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {
   layoutOverlay,
+  layoutStickers,
   monthLabel,
   monthRange,
   overlayTotals,
@@ -23,8 +24,17 @@ import {
   OVERLAY_HEIGHT,
   OVERLAY_WIDTH,
   RouteOverlaySvg,
+  RouteStickersSvg,
   staggerSeconds,
 } from "@/components/route-overlay-svg";
+
+type ViewMode = OverlayMode | "stickers";
+
+const MODES: { key: ViewMode; label: string }[] = [
+  { key: "stickers", label: "Stickers" },
+  { key: "map", label: "On the map" },
+  { key: "stacked", label: "Same start" },
+];
 
 function currentMonth(): string {
   const d = new Date();
@@ -56,7 +66,8 @@ function OverlayPageInner() {
   const rows = useQuery(api.routes.routesInRange, range);
   const syncRoutes = useAction(api.routes.syncRoutes);
 
-  const [mode, setMode] = useState<OverlayMode>("map");
+  const [mode, setMode] = useState<ViewMode>("stickers");
+  const [seed, setSeed] = useState(1);
   const [replayKey, setReplayKey] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -75,10 +86,17 @@ function OverlayPageInner() {
     [rows]
   );
 
+  const overlayMode: OverlayMode = mode === "stickers" ? "map" : mode;
   const layout = useMemo(
-    () => layoutOverlay(routes, { width: OVERLAY_WIDTH, height: OVERLAY_HEIGHT, mode, area: OVERLAY_AREA }),
-    [routes, mode]
+    () => layoutOverlay(routes, { width: OVERLAY_WIDTH, height: OVERLAY_HEIGHT, mode: overlayMode, area: OVERLAY_AREA }),
+    [routes, overlayMode]
   );
+  const stickers = useMemo(
+    () => layoutStickers(routes, { width: OVERLAY_WIDTH, height: OVERLAY_HEIGHT, seed }),
+    [routes, seed]
+  );
+  const isStickers = mode === "stickers";
+  const hasDrawing = isStickers ? stickers.stickers.length > 0 : layout.paths.length > 0;
   const drawn = useMemo(
     () => layout.paths.map((p) => ({ distance: p.distance, duration: p.duration })),
     [layout]
@@ -113,9 +131,13 @@ function OverlayPageInner() {
     setReplayKey((k) => k + 1);
   };
 
-  const download = () => {
+  const download = (transparent = false) => {
     const svg = renderToStaticMarkup(
-      <RouteOverlaySvg layout={layout} totals={totals} title={label} />
+      isStickers ? (
+        <RouteStickersSvg layout={stickers} transparent={transparent} title={label} />
+      ) : (
+        <RouteOverlaySvg layout={layout} totals={totals} title={label} />
+      )
     ).replace("var(--font-geist-sans), ", "");
     const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -129,7 +151,7 @@ function OverlayPageInner() {
       ctx.drawImage(img, 0, 0);
       URL.revokeObjectURL(url);
       const a = document.createElement("a");
-      a.download = `routes-${month}.png`;
+      a.download = `routes-${month}${isStickers ? "-stickers" : ""}${transparent ? "-transparent" : ""}.png`;
       a.href = canvas.toDataURL("image/png");
       a.click();
     };
@@ -154,10 +176,12 @@ function OverlayPageInner() {
       </div>
 
       <div className="rounded-xl overflow-hidden bg-[#0B0B0D] aspect-[9/16] shadow-lg">
-        {rows === undefined ? null : layout.paths.length === 0 ? (
+        {rows === undefined ? null : !hasDrawing ? (
           <div className="h-full flex items-center justify-center text-sm text-neutral-400 px-8 text-center">
             {syncing ? "Pulling routes from Strava…" : `No routes for ${label} yet.`}
           </div>
+        ) : isStickers ? (
+          <RouteStickersSvg key={`${replayKey}-${seed}`} layout={stickers} title={label} animate className="w-full h-full" />
         ) : (
           <RouteOverlaySvg
             key={replayKey}
@@ -171,29 +195,52 @@ function OverlayPageInner() {
         )}
       </div>
 
+      <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
+        {MODES.map((m) => (
+          <button
+            key={m.key}
+            type="button"
+            onClick={() => setMode(m.key)}
+            className={`rounded-md py-1.5 text-xs font-medium transition-colors ${
+              mode === m.key ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-2 gap-2">
-        <Button variant="outline" size="sm" onClick={() => setReplayKey((k) => k + 1)} disabled={layout.paths.length === 0}>
+        <Button variant="outline" size="sm" onClick={() => setReplayKey((k) => k + 1)} disabled={!hasDrawing}>
           <RotateCcw /> Replay
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setMode(mode === "map" ? "stacked" : "map")}
-          disabled={routes.length === 0}
-        >
-          {mode === "map" ? "Same start" : "On the map"}
-        </Button>
-        <Button variant="outline" size="sm" onClick={sync} disabled={syncing || !stravaAuth}>
-          <RefreshCw className={syncing ? "animate-spin" : ""} /> {syncing ? "Syncing" : "Sync Strava"}
-        </Button>
-        <Button size="sm" onClick={download} disabled={layout.paths.length === 0}>
+        {isStickers ? (
+          <Button variant="outline" size="sm" onClick={() => setSeed((n) => n + 1)} disabled={!hasDrawing}>
+            <Shuffle /> Shuffle
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" onClick={sync} disabled={syncing || !stravaAuth}>
+            <RefreshCw className={syncing ? "animate-spin" : ""} /> {syncing ? "Syncing" : "Sync Strava"}
+          </Button>
+        )}
+        <Button size="sm" onClick={() => download(false)} disabled={!hasDrawing}>
           <Download /> PNG
         </Button>
+        {isStickers ? (
+          <Button size="sm" variant="secondary" onClick={() => download(true)} disabled={!hasDrawing}>
+            <Download /> Transparent PNG
+          </Button>
+        ) : null}
+        {isStickers ? (
+          <Button variant="outline" size="sm" className="col-span-2" onClick={sync} disabled={syncing || !stravaAuth}>
+            <RefreshCw className={syncing ? "animate-spin" : ""} /> {syncing ? "Syncing" : "Sync Strava"}
+          </Button>
+        ) : null}
       </div>
 
       {syncError && <p className="text-sm text-destructive">{syncError}</p>}
       {stravaAuth === null && <p className="text-sm text-muted-foreground">Connect Strava in Settings to pull routes.</p>}
-      {layout.away.length > 0 && (
+      {!isStickers && layout.away.length > 0 && (
         <p className="text-xs text-muted-foreground">
           {layout.away.length} run{layout.away.length === 1 ? "" : "s"} elsewhere not on the map
           {" "}({layout.away.map((r) => r.name).join(", ")}). Switch to &ldquo;Same start&rdquo; to include them.
@@ -202,7 +249,9 @@ function OverlayPageInner() {
       {routes.length > 0 && (
         <p className="text-xs text-muted-foreground">
           {routes.length} run{routes.length === 1 ? "" : "s"} with GPS, {range.start} to {range.end}.
-          Each route draws in on its own; routes you repeat glow brighter.
+          {isStickers
+            ? " One sticker per run, bigger for longer runs. Transparent PNG drops straight onto a video."
+            : " Each route draws in on its own; routes you repeat glow brighter."}
         </p>
       )}
     </div>
