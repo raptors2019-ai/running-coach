@@ -84,6 +84,20 @@ export default defineSchema({
     goalSeconds: v.optional(v.number()), // updated race goal, if the result changes it
   }).index("by_key", ["key"]),
 
+  // Lab VO2max tests, kept as a long-run fitness record. Tests are expensive
+  // and rare (maybe yearly), so each one is a row worth comparing years later.
+  vo2maxTests: defineTable({
+    date: v.string(), // YYYY-MM-DD
+    vo2max: v.number(), // ml/kg/min, the lab's reported (smoothed) value
+    peakVo2: v.optional(v.number()), // raw peak before smoothing
+    maxHeartRate: v.optional(v.number()), // highest HR reached in the test
+    weightLbs: v.optional(v.number()), // ml/kg/min depends on it
+    percentile: v.optional(v.number()), // lab's age/sex percentile
+    lab: v.optional(v.string()),
+    protocol: v.optional(v.string()), // e.g. incline treadmill ramp
+    notes: v.optional(v.string()),
+  }).index("by_date", ["date"]),
+
   coachBriefings: defineTable({
     date: v.string(), // YYYY-MM-DD the briefing is for
     content: v.string(),
