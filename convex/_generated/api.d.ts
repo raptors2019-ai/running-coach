@@ -27,6 +27,7 @@ import type * as seed from "../seed.js";
 import type * as splits from "../splits.js";
 import type * as splitsActions from "../splitsActions.js";
 import type * as strava from "../strava.js";
+import type * as vo2max from "../vo2max.js";
 import type * as weather from "../weather.js";
 import type * as weatherOptimize from "../weatherOptimize.js";
 import type * as workouts from "../workouts.js";
@@ -57,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   splits: typeof splits;
   splitsActions: typeof splitsActions;
   strava: typeof strava;
+  vo2max: typeof vo2max;
   weather: typeof weather;
   weatherOptimize: typeof weatherOptimize;
   workouts: typeof workouts;

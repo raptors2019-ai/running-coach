@@ -6,6 +6,7 @@ import { RacePrediction } from "@/components/race-prediction";
 import { RecentRuns } from "@/components/recent-runs";
 import { CountdownBadge } from "@/components/countdown-badge";
 import { RouteOverlayLink } from "@/components/route-overlay-link";
+import { Vo2maxCard } from "@/components/vo2max-card";
 
 export default function ProgressPage() {
   return (
@@ -19,6 +20,7 @@ export default function ProgressPage() {
       <RouteOverlayLink />
       <PaceChart />
       <WeeklyVolumeChart />
+      <Vo2maxCard />
     </div>
   );
 }
