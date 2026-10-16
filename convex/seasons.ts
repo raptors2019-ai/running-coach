@@ -71,7 +71,14 @@ export async function loadSeasonWeek(ctx: QueryCtx, weekStart: string) {
       WorkoutSummary | null
     >,
     extras: extras.map(asSummary),
-    crossTraining: crossTraining.map((w) => ({ type: w.type, title: w.title, actualDistance: w.actualDistance })),
+    // Synced rows carry a generic title ("Cross Training"); the Strava
+    // activity name ("Night Basketball") is in the description.
+    crossTraining: crossTraining.map((w) => ({
+      type: w.type,
+      title: w.title,
+      name: w.description,
+      actualDistance: w.actualDistance,
+    })),
     totals: {
       runKm: Math.round(runs.reduce((km, r) => km + (r.actualDistance ?? 0), 0) * 10) / 10,
       runs: runs.length,

@@ -62,6 +62,31 @@ describe("fillSlots", () => {
     expect(extras).toHaveLength(0);
   });
 
+  it("puts a lone long easy run in the long slot, not quality", () => {
+    const slots = [slot({ id: "long", kind: "long", targetDistance: 11 }), slot({ id: "q1", kind: "quality" })];
+    const { fills } = fillSlots(slots, [run("long15", 15.07, "7:11")]);
+    expect(fills.long?._id).toBe("long15");
+    expect(fills.q1).toBeNull();
+  });
+
+  it("leaves quality open when the other run was easy too", () => {
+    const slots = [
+      slot({ id: "long", kind: "long", targetDistance: 11 }),
+      slot({ id: "q1", kind: "quality" }),
+      slot({ id: "easy", kind: "easy", optional: true }),
+    ];
+    const { fills } = fillSlots(slots, [run("long15", 15, "7:11"), run("easy5", 5, "7:00")]);
+    expect(fills.q1).toBeNull();
+    expect(fills.easy?._id).toBe("easy5");
+  });
+
+  it("puts a lone fast session in quality even with a long slot open", () => {
+    const slots = [slot({ id: "long", kind: "long", targetDistance: 11 }), slot({ id: "q1", kind: "quality" })];
+    const { fills } = fillSlots(slots, [run("track", 8, "6:22")]);
+    expect(fills.q1?._id).toBe("track");
+    expect(fills.long).toBeNull();
+  });
+
   it("does not use a run under 3 km for quality", () => {
     const { fills } = fillSlots([WEEK[1]], [run("jog", 2.2, "5:40")]);
     expect(fills.q1).toBeNull();

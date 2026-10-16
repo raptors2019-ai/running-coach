@@ -19,3 +19,13 @@ describe("groupCrossTraining", () => {
     expect(groupCrossTraining([{ type: "cross_training", title: "Evening Physical Therapy" }])[0].kind).toBe("other");
   });
 });
+
+describe("groupCrossTraining with Strava names", () => {
+  it("reads the activity name when the title is the generic type label", () => {
+    const groups = groupCrossTraining([
+      { type: "cross_training", title: "Cross Training", name: "Afternoon Ride", actualDistance: 40.05 },
+      { type: "cross_training", title: "Cross Training", name: "Night Basketball", actualDistance: 0 },
+    ]);
+    expect(groups.map((g) => g.kind)).toEqual(["ride", "hoops"]);
+  });
+});

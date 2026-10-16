@@ -1,10 +1,10 @@
 import { Bike, Dribbble, Dumbbell, Footprints, Waves } from "lucide-react";
 
 /** Cross-training as chips: rides summed by km, everything else counted. */
-export function groupCrossTraining(rows: { type: string; title: string; actualDistance?: number }[]) {
+export function groupCrossTraining(rows: { type: string; title: string; name?: string; actualDistance?: number }[]) {
   const groups = new Map<string, { label: string; count: number; km: number; Icon: typeof Bike; tone: string }>();
   for (const r of rows) {
-    const t = `${r.type} ${r.title}`.toLowerCase();
+    const t = `${r.type} ${r.title} ${r.name ?? ""}`.toLowerCase();
     const kind = /ride|bike|cycl/.test(t)
       ? "ride"
       : /basketball|hoops/.test(t)

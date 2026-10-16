@@ -14,7 +14,7 @@ export type SeasonWeekLike = {
   slots: Slot[];
   fills: Record<string, RunLike | null>;
   extras: RunLike[];
-  crossTraining: { type: string; title: string; actualDistance?: number }[];
+  crossTraining: { type: string; title: string; name?: string; actualDistance?: number }[];
   totals: { runKm: number; runs: number; crossCount: number };
 };
 
@@ -54,7 +54,10 @@ export function weekForPrompt(week: SeasonWeekLike) {
       };
     }),
     extraRuns: week.extras.map(runForPrompt),
-    crossTraining: week.crossTraining.map((c) => (c.actualDistance ? `${c.title} ${c.actualDistance} km` : c.title)),
+    crossTraining: week.crossTraining.map((c) => {
+      const label = c.name || c.title;
+      return c.actualDistance ? `${label} ${c.actualDistance} km` : label;
+    }),
     totals: week.totals,
   };
 }

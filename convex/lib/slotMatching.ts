@@ -15,6 +15,10 @@ export type MatchableRun = {
 
 const QUALITY_TYPES = new Set(["intervals", "tempo", "race_pace", "race"]);
 const MIN_QUALITY_KM = 3;
+const LONG_REACH = 0.8; // a long slot's run covers most of its target distance
+const LONG_FALLBACK_KM = 8; // when the slot names no distance
+const QUALITY_MARGIN_SEC = 15; // quality must beat the long run's pace by this much per km
+const EASY_FLOOR_SEC = 6 * 60 + 45; // 6:45/km, the fast end of zone 2
 
 const isSegment = (title: string) => title.startsWith("Warmup —") || title.startsWith("Cooldown —");
 const isRun = (r: MatchableRun) => isRunningType(r.type) || (r.originalType ? isRunningType(r.originalType) : false);
@@ -33,10 +37,15 @@ export function weekRuns<T extends MatchableRun>(rows: T[]): T[] {
 
 /**
  * Decide which run fills which slot. Derived at read time, never stored, so
- * a Strava re-sync can never leave a stale fill. Order: pins, then quality
- * (a quality-typed run, else the fastest run of 3 km+ — interval sessions
- * average slower than their reps but still beat easy runs), then long
- * (longest), then easy (longest first). Whatever is left is an extra run.
+ * a Strava re-sync can never leave a stale fill. Order:
+ *   1. pins, then quality-typed runs (a session the plan named)
+ *   2. a long slot takes the longest run that reaches most of its distance
+ *   3. quality takes the fastest remaining run of 3 km+ — but only if it was
+ *      clearly quicker than easy running (15 s/km under the long run's pace,
+ *      or under 6:45/km). Interval sessions average slower than their reps
+ *      yet still beat easy days; two easy runs leave quality honestly open.
+ *   4. an unfilled long slot takes the longest run left, easy slots the rest.
+ * Whatever is left over is an extra run.
  */
 export function fillSlots<T extends MatchableRun>(
   slots: Slot[],
@@ -51,20 +60,30 @@ export function fillSlots<T extends MatchableRun>(
     remaining = remaining.filter((x) => x !== r);
   };
   const open = slots.filter((s) => !s.skipped);
+  const unfilled = (kind: Slot["kind"]) => open.filter((s) => s.kind === kind && !fills[s.id]);
+  const longestFirst = () => [...remaining].sort((a, b) => (b.actualDistance ?? 0) - (a.actualDistance ?? 0));
 
   for (const s of open) {
     if (s.pinnedWorkoutId) take(s.id, remaining.find((r) => r._id === s.pinnedWorkoutId));
   }
-  const unfilled = (kind: Slot["kind"]) => open.filter((s) => s.kind === kind && !fills[s.id]);
+  for (const s of unfilled("quality")) take(s.id, remaining.find(isQualityTyped));
 
-  for (const s of unfilled("quality")) {
-    const typed = remaining.find(isQualityTyped);
-    const fastest = remaining
-      .filter((r) => (r.actualDistance ?? 0) >= MIN_QUALITY_KM)
-      .sort((a, b) => secPerKm(a) - secPerKm(b))[0];
-    take(s.id, typed ?? fastest);
+  for (const s of unfilled("long")) {
+    const reach = s.targetDistance ? s.targetDistance * LONG_REACH : LONG_FALLBACK_KM;
+    take(s.id, longestFirst().find((r) => (r.actualDistance ?? 0) >= reach));
   }
-  const longestFirst = () => [...remaining].sort((a, b) => (b.actualDistance ?? 0) - (a.actualDistance ?? 0));
+
+  const longPaces = open
+    .filter((s) => s.kind === "long" && fills[s.id])
+    .map((s) => secPerKm(fills[s.id] as T));
+  const qualityCutoff = longPaces.length ? Math.min(...longPaces) - QUALITY_MARGIN_SEC : EASY_FLOOR_SEC;
+  for (const s of unfilled("quality")) {
+    const fastest = remaining
+      .filter((r) => (r.actualDistance ?? 0) >= MIN_QUALITY_KM && secPerKm(r) < qualityCutoff)
+      .sort((a, b) => secPerKm(a) - secPerKm(b))[0];
+    take(s.id, fastest);
+  }
+
   for (const s of unfilled("long")) take(s.id, longestFirst()[0]);
   for (const s of unfilled("easy")) take(s.id, longestFirst()[0]);
 
