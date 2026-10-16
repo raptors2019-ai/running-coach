@@ -1,6 +1,8 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { splitValidator } from "./lib/splitParsing";
+import { slotValidator } from "./lib/slots";
+import { seasonFields } from "./lib/seasonFields";
 
 export default defineSchema({
   trainingPlan: defineTable({
@@ -47,6 +49,19 @@ export default defineSchema({
   }).index("by_date", ["date"])
     .index("by_plan", ["planId"])
     .index("by_week", ["planId", "weekNumber"]),
+
+  // Off-season mode: a season of phases and checkpoint time trials, and per
+  // week a handful of dayless run slots that whichever runs happen that week
+  // fill (convex/lib/slotMatching). Dated workouts stay the record of runs.
+  seasons: defineTable(seasonFields).index("by_start", ["startDate"]),
+
+  weekPlans: defineTable({
+    seasonId: v.id("seasons"),
+    weekStart: v.string(), // Monday
+    status: v.union(v.literal("draft"), v.literal("set")),
+    slots: v.array(slotValidator),
+    note: v.optional(v.string()), // the coach's one-liner for the week
+  }).index("by_week_start", ["weekStart"]),
 
   journalEntries: defineTable({
     workoutId: v.optional(v.id("workouts")),

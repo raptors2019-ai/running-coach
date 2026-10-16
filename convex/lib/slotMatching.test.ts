@@ -1,4 +1,4 @@
-import { fillSlots, weekRuns, type MatchableRun } from "./slotMatching";
+import { fillSlots, weekRuns, slotWeekStats, type MatchableRun } from "./slotMatching";
 import type { Slot } from "./slots";
 
 const slot = (over: Partial<Slot> & Pick<Slot, "id" | "kind">): Slot => ({
@@ -107,5 +107,34 @@ describe("weekRuns", () => {
   it("counts a relabelled run by its original running type", () => {
     const rows = [run("relabel", 5, "7:00", { type: "rest", originalType: "run" })];
     expect(weekRuns(rows)).toHaveLength(1);
+  });
+});
+
+describe("slotWeekStats", () => {
+  it("plans from required slots and reads quality from its fill", () => {
+    const slots: Slot[] = [
+      slot({ id: "long", kind: "long", targetDistance: 11 }),
+      slot({ id: "q1", kind: "quality", title: "Track: 5×800m", targetDistance: 8 }),
+      slot({ id: "easy", kind: "easy", optional: true, targetDistance: 5 }),
+    ];
+    const track = { ...run("track", 8, "6:22"), actualPace: "6:22/km" };
+    expect(slotWeekStats(slots, { long: null, q1: track, easy: null })).toEqual({
+      runsPlanned: 2,
+      plannedKm: 19,
+      qualityTitle: "Track: 5×800m",
+      qualityCompleted: true,
+      qualityPace: "6:22/km",
+    });
+  });
+
+  it("leaves skipped slots out of the plan", () => {
+    const slots: Slot[] = [slot({ id: "q1", kind: "quality", skipped: true, targetDistance: 8 })];
+    expect(slotWeekStats(slots, { q1: null })).toEqual({
+      runsPlanned: 0,
+      plannedKm: 0,
+      qualityTitle: undefined,
+      qualityCompleted: false,
+      qualityPace: undefined,
+    });
   });
 });

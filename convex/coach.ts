@@ -14,6 +14,8 @@ import { workoutUpdatePatch } from "./lib/workoutUpdate";
 import { inferWeekNumber, getDayOfWeek, isRunningType } from "./lib/stravaMapping";
 import { swapPlanPatches } from "./lib/planSwap";
 import { splitsForPrompt } from "./lib/splitParsing";
+import { slotWeekStats } from "./lib/slotMatching";
+import { loadSeasonWeek } from "./seasons";
 
 function todayToronto(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Toronto" });
@@ -125,6 +127,18 @@ async function computeWeekStats(ctx: QueryCtx | MutationCtx, weekStart: string):
   }
   stats.plannedKm = Math.round(stats.plannedKm * 10) / 10;
   stats.actualKm = Math.round(stats.actualKm * 10) / 10;
+
+  // Season weeks plan in dayless slots, not dated rows: the plan side of
+  // the stats comes from the slots, so "planned" isn't a misleading 0.
+  const seasonWeek = await loadSeasonWeek(ctx, weekStart);
+  if (seasonWeek.plan) {
+    const planned = slotWeekStats(seasonWeek.slots, seasonWeek.fills);
+    stats.runsPlanned = planned.runsPlanned;
+    stats.plannedKm = planned.plannedKm;
+    stats.qualityTitle = planned.qualityTitle;
+    stats.qualityCompleted = planned.qualityCompleted;
+    stats.qualityPace = planned.qualityPace;
+  }
   return stats;
 }
 

@@ -99,3 +99,8 @@ export function upNextSlot(slots: Slot[], fills: Fills): Slot | null {
     .sort((a, b) => Number(a.optional) - Number(b.optional) || KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
   return open[0] ?? null;
 }
+
+/** Today's date in Toronto, where the athlete lives. */
+export function todayToronto(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Toronto" });
+}

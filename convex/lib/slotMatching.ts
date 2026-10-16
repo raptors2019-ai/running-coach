@@ -70,3 +70,21 @@ export function fillSlots<T extends MatchableRun>(
 
   return { fills, extras: remaining };
 }
+
+/**
+ * The planned side of a season week's stats, from its slots: required slots
+ * are the plan, the quality slot's fill says whether the key session happened.
+ */
+export function slotWeekStats(slots: Slot[], fills: Record<string, { actualPace?: string } | null>) {
+  const live = slots.filter((s) => !s.skipped);
+  const required = live.filter((s) => !s.optional);
+  const quality = live.find((s) => s.kind === "quality");
+  const qualityRun = quality ? fills[quality.id] : null;
+  return {
+    runsPlanned: required.length,
+    plannedKm: Math.round(required.reduce((km, s) => km + (s.targetDistance ?? 0), 0) * 10) / 10,
+    qualityTitle: quality?.title,
+    qualityCompleted: !!qualityRun,
+    qualityPace: qualityRun?.actualPace,
+  };
+}
