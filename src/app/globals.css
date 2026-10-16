@@ -9,6 +9,36 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-bricolage);
+
+  /* Off-season "winter climb" palette (docs/off-season-plan-spec.md) */
+  --color-winter-navy: #1b2550;
+  --color-winter-navy-2: #33407a;
+  --color-winter-navy-3: #283573;
+  --color-winter-ice: #dfe7ff;
+  --color-winter-frost: #c9d3ff;
+  --color-winter-snow: #f4f6fd;
+  --color-winter-ink: #141a33;
+  --color-winter-muted: #5b6383;
+  --color-winter-line: #c8cee6;
+  --color-slot-quality: #e83e78;
+  --color-slot-quality-deep: #c42a62;
+  --color-slot-quality-soft: #ffe6ef;
+  --color-slot-quality-ink: #6b1434;
+  --color-slot-long: #4c8dff;
+  --color-slot-long-soft: #dfeaff;
+  --color-slot-long-ink: #12306e;
+  --color-slot-easy: #1f9d57;
+  --color-slot-easy-soft: #dcf7e6;
+  --color-slot-done: #3ddc97;
+  --color-slot-done-soft: #e5fbf0;
+  --color-slot-done-ink: #0b3d27;
+  --color-sunrise: #ff7a45;
+  --color-sunrise-soft: #ffe4d6;
+  --color-sunrise-ink: #3a1203;
+  --color-sun: #ffd23f;
+  --color-sun-soft: #fff4cc;
+  --color-sun-ink: #5c3f00;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);

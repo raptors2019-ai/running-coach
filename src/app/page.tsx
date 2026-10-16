@@ -17,6 +17,10 @@ import { api } from "../../convex/_generated/api";
 import { formatDistance, getLocalDateString } from "@/lib/pace-utils";
 import { CloudSun } from "lucide-react";
 import { getWeeklyStats } from "@/lib/weekly-stats";
+import { format, parseISO } from "date-fns";
+import { SeasonBadge } from "@/components/season/season-badge";
+import { SeasonTodayCard } from "@/components/season/season-today-card";
+import { NextCheckpointCard } from "@/components/season/next-checkpoint-card";
 
 export default function HomePage() {
   useAutoStravaSync();
@@ -24,7 +28,31 @@ export default function HomePage() {
   const plan = useQuery(api.workouts.getTrainingPlan);
   const workouts = useQuery(api.workouts.getAllWorkouts);
 
+  const active = useQuery(api.seasons.getActiveSeason, { today: getLocalDateString() });
+
   const stats = workouts ? getWeeklyStats(workouts, getLocalDateString()) : null;
+
+  // Hold the page until we know which mode it's in, so the race view never flashes.
+  if (active === undefined) return <div className="min-h-screen" />;
+
+  if (active) {
+    return (
+      <div className="min-h-screen space-y-4 bg-winter-snow p-4 text-winter-ink">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[13px] font-semibold text-winter-muted">{format(parseISO(active.today), "EEE · MMM d")}</p>
+            <h1 className="font-display text-[26px] font-extrabold tracking-tight">Hey Josh</h1>
+          </div>
+          <SeasonBadge />
+        </div>
+        <JournalNudgeBanner />
+        <SeasonTodayCard active={active} />
+        <NextCheckpointCard active={active} />
+        {workouts && <BreathworkCard workouts={workouts} />}
+        <WeatherWidget />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 space-y-4">

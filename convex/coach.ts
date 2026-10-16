@@ -14,6 +14,10 @@ import { workoutUpdatePatch } from "./lib/workoutUpdate";
 import { inferWeekNumber, getDayOfWeek, isRunningType } from "./lib/stravaMapping";
 import { swapPlanPatches } from "./lib/planSwap";
 import { splitsForPrompt } from "./lib/splitParsing";
+import { slotWeekStats } from "./lib/slotMatching";
+import { activeSeason, loadSeasonWeek } from "./seasons";
+import { weekForPrompt } from "./lib/seasonPrompt";
+import { nextCheckpoint, phaseFor, seasonWeekIndex } from "./lib/season";
 
 function todayToronto(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Toronto" });
@@ -125,7 +129,45 @@ async function computeWeekStats(ctx: QueryCtx | MutationCtx, weekStart: string):
   }
   stats.plannedKm = Math.round(stats.plannedKm * 10) / 10;
   stats.actualKm = Math.round(stats.actualKm * 10) / 10;
+
+  // Season weeks plan in dayless slots, not dated rows: the plan side of
+  // the stats comes from the slots, so "planned" isn't a misleading 0.
+  const seasonWeek = await loadSeasonWeek(ctx, weekStart);
+  if (seasonWeek.plan) {
+    const planned = slotWeekStats(seasonWeek.slots, seasonWeek.fills);
+    stats.runsPlanned = planned.runsPlanned;
+    stats.plannedKm = planned.plannedKm;
+    stats.qualityTitle = planned.qualityTitle;
+    stats.qualityCompleted = planned.qualityCompleted;
+    stats.qualityPace = planned.qualityPace;
+  }
   return stats;
+}
+
+/**
+ * The off-season as the coach sees it, or null outside a season: goals,
+ * phases, checkpoints and the named weeks' slots with what filled them.
+ */
+async function seasonForPrompt(ctx: QueryCtx, today: string, weeks: Record<string, string>) {
+  const season = await activeSeason(ctx, today);
+  if (!season) return null;
+  const phase = phaseFor(season, today);
+  const out: Record<string, unknown> = {
+    name: season.name,
+    dates: `${season.startDate} to ${season.endDate}`,
+    goals: season.goals,
+    phases: season.phases,
+    checkpoints: season.checkpoints,
+    seasonWeek: seasonWeekIndex(season, today),
+    currentPhase: phase
+      ? { name: phase.phase.name, week: phase.weekInPhase, of: phase.weeksInPhase, focus: phase.phase.focus }
+      : null,
+    nextCheckpoint: nextCheckpoint(season, today),
+  };
+  for (const [label, weekStart] of Object.entries(weeks)) {
+    out[label] = weekForPrompt(await loadSeasonWeek(ctx, weekStart));
+  }
+  return out;
 }
 
 const WEEK_STATS_VALIDATOR = v.object({
@@ -214,7 +256,14 @@ export const getWeekReviewInput = internalQuery({
         reminders: r.reminders,
       }));
 
+    const season = await seasonForPrompt(ctx, today, {
+      reviewedWeek: weekStart,
+      comingWeek: nextWeekStart,
+      weekAfter: addDays(nextWeekStart, 7),
+    });
+
     return {
+      season,
       today,
       weekStart,
       nextWeekStart,
@@ -426,7 +475,13 @@ export const getCoachContext = internalQuery({
         reminders: r.reminders,
       }));
 
+    const season = await seasonForPrompt(ctx, today, {
+      thisWeek: weekStart,
+      nextWeek: addDays(weekStart, 7),
+    });
+
     return {
+      season,
       currentWeek,
       weeklyReviews,
       checkpoints,
