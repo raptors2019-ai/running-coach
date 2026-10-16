@@ -65,7 +65,7 @@ export function SeasonTodayCard({ active }: { active: ActiveSeason }) {
         <button
           type="button"
           onClick={() => open(next.id)}
-          className={`flex flex-col gap-2.5 rounded-[20px] p-4 text-left text-white ${nextColors.solid}`}
+          className={`flex w-full flex-col gap-2.5 rounded-[20px] p-4 text-left text-white ${nextColors.solid}`}
         >
           <span className="flex items-center justify-between text-xs font-bold tracking-wide">
             <span className="flex items-center gap-1.5">

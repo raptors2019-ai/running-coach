@@ -29,7 +29,7 @@ export function CheckpointTrail({ active }: { active: ActiveSeason }) {
             )}
             <span className="text-[11px] font-bold text-winter-ink">{format(parseISO(c.date), "MMM d")}</span>
             <span className={`text-[10px] ${c.isGoal ? "font-bold text-winter-ink" : "text-winter-muted"}`}>
-              {aim ? (c.isGoal && !c.resultSeconds ? `sub-${short(aim)}` : `${c.resultSeconds ? "" : "~"}${short(aim)}`) : c.label}
+              {aim ? (c.isGoal && !c.resultSeconds ? `sub-${short(aim)}` : `${c.resultSeconds ? "" : "~"}${formatDuration(aim)}`) : c.label}
             </span>
             <span className="sr-only">{c.label}</span>
           </li>

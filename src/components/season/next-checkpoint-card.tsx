@@ -7,7 +7,11 @@ export function NextCheckpointCard({ active }: { active: ActiveSeason }) {
   const next = active.nextCheckpoint;
   if (!next) return null;
   const { checkpoint, daysAway } = next;
-  const aim = checkpoint.aimSeconds ? formatDuration(checkpoint.aimSeconds).replace(/:00$/, "") : null;
+  const aim = checkpoint.aimSeconds
+    ? checkpoint.isGoal
+      ? formatDuration(checkpoint.aimSeconds).replace(/:00$/, "")
+      : formatDuration(checkpoint.aimSeconds)
+    : null;
   const phase = active.phase;
   return (
     <section className="flex items-center gap-3.5 rounded-[20px] bg-white p-3.5">
