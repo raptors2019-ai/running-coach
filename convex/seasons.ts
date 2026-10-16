@@ -1,6 +1,6 @@
-import { query, mutation, internalQuery, internalMutation, type QueryCtx } from "./_generated/server";
+import { query, mutation, internalQuery, internalMutation, type QueryCtx, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { seasonFields } from "./lib/seasonFields";
 import { slotValidator, type Slot } from "./lib/slots";
 import { fillSlots, weekRuns } from "./lib/slotMatching";
@@ -109,27 +109,46 @@ export const getSeasonWeek = query({
  */
 export const pinRunToSlot = mutation({
   args: { weekStart: v.string(), slotId: v.string(), workoutId: v.union(v.id("workouts"), v.null()) },
-  handler: async (ctx, args) => {
-    const plan = await weekPlanFor(ctx, args.weekStart);
-    if (!plan) throw new Error(`No week plan for ${args.weekStart}`);
-    if (!plan.slots.some((s) => s.id === args.slotId)) throw new Error(`No slot ${args.slotId} that week`);
-    if (args.workoutId) {
-      const w = await ctx.db.get(args.workoutId);
-      if (!w || w.date < args.weekStart || w.date > addDaysIso(args.weekStart, 6)) {
-        throw new Error("That run isn't in this week");
-      }
+  handler: async (ctx, args) => applyPin(ctx, args.weekStart, args.slotId, args.workoutId),
+});
+
+async function applyPin(ctx: MutationCtx, weekStart: string, slotId: string, workoutId: Id<"workouts"> | null) {
+  const plan = await weekPlanFor(ctx, weekStart);
+  if (!plan) throw new Error(`No week plan for ${weekStart}`);
+  if (!plan.slots.some((s) => s.id === slotId)) throw new Error(`No slot ${slotId} that week`);
+  if (workoutId) {
+    const w = await ctx.db.get(workoutId);
+    if (!w || w.date < weekStart || w.date > addDaysIso(weekStart, 6)) {
+      throw new Error("That run isn't in this week");
     }
-    const pinned = args.workoutId ?? undefined;
-    await ctx.db.patch(plan._id, {
-      slots: plan.slots.map((s) =>
-        s.id === args.slotId
-          ? { ...s, pinnedWorkoutId: pinned }
-          : // One run fills one slot: moving a pin releases it elsewhere.
-            s.pinnedWorkoutId && s.pinnedWorkoutId === pinned
-            ? { ...s, pinnedWorkoutId: undefined }
-            : s
-      ),
-    });
+  }
+  const pinned = workoutId ?? undefined;
+  await ctx.db.patch(plan._id, {
+    slots: plan.slots.map((s) =>
+      s.id === slotId
+        ? { ...s, pinnedWorkoutId: pinned }
+        : // One run fills one slot: moving a pin releases it elsewhere.
+          s.pinnedWorkoutId && s.pinnedWorkoutId === pinned
+          ? { ...s, pinnedWorkoutId: undefined }
+          : s
+    ),
+  });
+}
+
+/** The coach's pin: the run on a date (its longest, if there were several) fills a slot. */
+export const pinRunByDate = internalMutation({
+  args: { weekStart: v.string(), slotId: v.string(), date: v.string() },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("workouts")
+      .withIndex("by_date", (q) => q.eq("date", args.date))
+      .collect();
+    const run = weekRuns(rows.map((w) => ({ ...w, _id: w._id as string }))).sort(
+      (a, b) => (b.actualDistance ?? 0) - (a.actualDistance ?? 0)
+    )[0];
+    if (!run) throw new Error(`No logged run on ${args.date}`);
+    await applyPin(ctx, args.weekStart, args.slotId, run._id as Id<"workouts">);
+    return `Pinned the ${run.actualDistance} km run on ${args.date} to slot ${args.slotId}`;
   },
 });
 

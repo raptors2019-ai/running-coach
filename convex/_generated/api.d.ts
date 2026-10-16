@@ -19,6 +19,7 @@ import type * as lib_passcode from "../lib/passcode.js";
 import type * as lib_planSwap from "../lib/planSwap.js";
 import type * as lib_season from "../lib/season.js";
 import type * as lib_seasonFields from "../lib/seasonFields.js";
+import type * as lib_seasonPrompt from "../lib/seasonPrompt.js";
 import type * as lib_slotMatching from "../lib/slotMatching.js";
 import type * as lib_slots from "../lib/slots.js";
 import type * as lib_splitParsing from "../lib/splitParsing.js";
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   "lib/planSwap": typeof lib_planSwap;
   "lib/season": typeof lib_season;
   "lib/seasonFields": typeof lib_seasonFields;
+  "lib/seasonPrompt": typeof lib_seasonPrompt;
   "lib/slotMatching": typeof lib_slotMatching;
   "lib/slots": typeof lib_slots;
   "lib/splitParsing": typeof lib_splitParsing;

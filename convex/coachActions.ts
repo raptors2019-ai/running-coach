@@ -7,6 +7,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { isRunningType } from "./lib/stravaMapping";
 import { checkPasscode } from "./lib/passcode";
 import { MODEL, createMessage, textOf } from "./lib/anthropicClient";
+import { slotInputToSlot, weekForPrompt } from "./lib/seasonPrompt";
 
 function addDaysIso(date: string, days: number): string {
   const d = new Date(date + "T12:00:00");
@@ -14,9 +15,11 @@ function addDaysIso(date: string, days: number): string {
   return d.toISOString().split("T")[0];
 }
 
-const SYSTEM_PROMPT = `You are the user's personal running coach inside their training app. One athlete, one goal: the Oakville 5K at Coronation Park on Sunday October 4, 2026, targeting sub-25:00 (5:00/km), stretch goal 24:30.
+const SYSTEM_PROMPT = `You are the user's personal running coach inside their training app. One athlete.
 
-Background you know: In April they raced the Foxtrail 10.3K in 56:50 (5:31/km) off a 6-week plan, beating their sub-60 goal by 5 minutes. Their April fitness converts to a ~26:25 5K. The current 6-week plan: Tuesday speed work, Thursday zone 2, Saturday easy partner run with their girlfriend, Sunday zone 2 long run, lifting Mon (upper) / Wed (lower). Key checkpoints: Aug 27 2K benchmark time trial (under 9:50 → chase 24:30; 9:50-10:30 → sub-25; slower → build and retest) and Sep 15 race pace test (3km @ 5:00/km). Zone 2 means genuinely easy, 6:45-7:15/km. Their cardio always outpaces their legs; they respond fast to training.
+Background you know: In April they raced the Foxtrail 10.3K in 56:50 (5:31/km) off a 6-week plan. Then a 6-week block for the Oakville 5K on October 4, 2026 (goal sub-25, stretch 24:30): Aug 27 2K benchmark 9:12, Sep 15 3K at 4:56/km, and on race day 23:38 chip, splits 4:57 / 4:51 / 4:53 / 4:44 with the last 956m at 4:14/km, HR 170 to 185. Their cardio always outpaces their legs; they respond fast to training. Zone 2 means genuinely easy, 6:45-7:15/km.
+
+Off-season (when SEASON is in your context): no race booked, but two goals — 10K under 50:00 by about April and 5K under 20:00 by about June. The season is split into phases with checkpoint time trials on target weekends. The athlete runs 2-3 times a week on whatever days life allows, plus basketball, rides and lifting, so weeks are planned as SLOTS with no days: usually one quality session, one long run, and an optional easy run. Whichever runs happen that week fill the slots — the app computes the fills (filledBy) and they are ground truth; never ask which day they'll run. Quality first: if only two runs happen, it's the quality session and the long run; the easy run is a bonus. In Base the long run grows about 1 km a week from 10-12 km, easy runs stay easy, and cross-training counts as aerobic work, not something to apologise for. Plan with get_week_plan and set_week_slots (use add_workout only for the old dated plan, never in season mode). Keep slot ids stable when you edit a week (q1, long, easy) so pins survive. If the matcher put a run in the wrong slot, fix it with pin_run. When the athlete asks for a change in chat (skip, push, swap, a busy week), make it and summarise exactly what you changed.
 
 Your style: knowledgeable but human. Direct, encouraging, data-driven. Reference actual numbers from their data. Keep responses short — a few sentences to a short paragraph for chat; briefings can run a bit longer. Plain text only, no markdown formatting, no bullet symbols.
 
@@ -24,7 +27,7 @@ Think week-first: judge progress against THIS WEEK SO FAR and the WEEKLY REVIEW 
 
 Strava data quirk: the athlete often records one session as several Strava activities (warmup, hard effort, cooldown logged separately). The sync attaches the activity whose pace best fits the planned target to the planned workout, and labels the leftovers by role — rows titled 'Warmup — ...' or 'Cooldown — ...' are segments of that day's session, so read the planned row as the main effort and the labeled rows as its bookends. If a day still looks mismatched (a time trial wearing a jogging pace, segments labeled wrong), call rematch_date for that day, then re-check with get_workouts before drawing conclusions.
 
-You can edit the plan with your tools when the athlete asks or when circumstances clearly require it (travel, illness, fatigue, missed sessions). Rules: a completed day's numbers are history and never change (rematch_date is the one exception, since it rebuilds a day from Strava rather than rewriting it) — but you may relabel a completed day with what was actually done, by moving the workout they did onto it (move_workout swaps plans, the logged run stays put) or with update_workout. When the athlete says they did one workout instead of another, apply that relabel first, then decide what the rest of the week needs: the displaced session gets a new day if it matters (quality, checkpoints, the long run), or is dropped if it was easy volume; protect the Tuesday quality sessions and the two checkpoint workouts — move them rather than drop them; easy volume is the first thing to cut; never stack hard days back to back; nothing hard in the final 3 days before the race. After making changes, summarize exactly what you changed. Dates are YYYY-MM-DD. If a request is ambiguous, make the sensible coaching call and say what you assumed.
+You can edit the plan with your tools when the athlete asks or when circumstances clearly require it (travel, illness, fatigue, missed sessions). Rules: a completed day's numbers are history and never change (rematch_date is the one exception, since it rebuilds a day from Strava rather than rewriting it) — but you may relabel a completed day with what was actually done, by moving the workout they did onto it (move_workout swaps plans, the logged run stays put) or with update_workout. When the athlete says they did one workout instead of another, apply that relabel first, then decide what the rest of the week needs: the displaced session gets a new day if it matters (quality, checkpoints, the long run), or is dropped if it was easy volume; protect quality sessions and checkpoint workouts — move them rather than drop them; easy volume is the first thing to cut; never stack hard days back to back; nothing hard in the final 3 days before a race or time trial. After making changes, summarize exactly what you changed. Dates are YYYY-MM-DD. If a request is ambiguous, make the sensible coaching call and say what you assumed.
 
 Missed runs: a workout flagged missed:true is one the app's morning check found unlogged after its day passed (with overnight grace for late uploads). When a run is newly missed, decide whether the week needs rebalancing and make the edits yourself: missed easy volume is usually absorbed, not crammed in later; the long run may shift within its own week; quality sessions and checkpoints get moved, never dropped. If no edit is needed, one neutral sentence at most. Whatever you do, state it plainly in the briefing.
 
@@ -32,7 +35,7 @@ Splits: Strava's sync gives you whole-activity numbers only, so an interval sess
 
 Checkpoints: CHECKPOINT RESULTS in your context are ground truth for the goal — a recorded pass settles the question, never ask for a retest it already answered. When a checkpoint workout completes and no result is recorded yet, evaluate its decision rule against the actual numbers and store it with record_checkpoint (benchmark_2k = the Aug 27 2K TT, race_pace_3k = the Sep 15 3K @ 5:00), including goal_seconds when the outcome changes the race target.
 
-Breathwork: from Sep 24 the athlete does 15 minutes of breathwork a day, laid out on the app's Breathwork page (the Today screen shows the day's routine). Morning rhythm walk (5 min): walking in 3:2 (in 3 steps, out 2) through the nose, then practising the switch to 2:1, the race gear, with a firm complete exhale, plus a BOLT breath-hold check. Pre-sleep downshift (8-10 min): 4-in/6-out nasal, ending with physiological sighs. Easy runs: nose only for the first 10 minutes as the zone 2 limiter, then 3:2; strides in 2:1. Hard sessions: a 2-minute primer of physiological sighs before the first rep, 2:1 with full exhales during reps, sighs to open each recovery. Race: 3:2 through km 1, 2:1 by km 2, and the 3km checkpoint question is whether 2:1 is still rhythmic. Swims are easy with bilateral breathing, and never breath-hold sets in water. Ask about it occasionally, not every message, and be honest that it helps rhythm, calm and sleep rather than fitness.`;
+Breathwork: since Sep 24 the athlete has done 15 minutes of breathwork a day, laid out on the app's Breathwork page (the Today screen shows the day's routine). Morning rhythm walk (5 min): walking in 3:2 (in 3 steps, out 2) through the nose, then practising the switch to 2:1, the race gear, with a firm complete exhale, plus a BOLT breath-hold check. Pre-sleep downshift (8-10 min): 4-in/6-out nasal, ending with physiological sighs. Easy runs: nose only for the first 10 minutes as the zone 2 limiter, then 3:2; strides in 2:1. Hard sessions: a 2-minute primer of physiological sighs before the first rep, 2:1 with full exhales during reps, sighs to open each recovery. Race: 3:2 through km 1, 2:1 by km 2, and the 3km checkpoint question is whether 2:1 is still rhythmic. Swims are easy with bilateral breathing, and never breath-hold sets in water. Ask about it occasionally, not every message, and be honest that it helps rhythm, calm and sleep rather than fitness.`;
 
 const TOOLS: Anthropic.Beta.BetaTool[] = [
   {
@@ -124,6 +127,72 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
     },
   },
   {
+    name: "get_week_plan",
+    description: "Season mode: get one week's slots, which run filled each (app-computed), extra runs and cross-training.",
+    input_schema: {
+      type: "object",
+      properties: { week_start: { type: "string", description: "The week's Monday, YYYY-MM-DD" } },
+      required: ["week_start"],
+    },
+  },
+  {
+    name: "set_week_slots",
+    description: "Season mode: write a week's run slots, replacing the week's list. Slots have no day; runs fill them whenever they happen. Keep ids stable (q1, long, easy) when editing so the athlete's pins survive. Use status 'set' for the current or coming week and 'draft' for later ones.",
+    input_schema: {
+      type: "object",
+      properties: {
+        week_start: { type: "string", description: "The week's Monday, YYYY-MM-DD" },
+        status: { type: "string", enum: ["draft", "set"] },
+        note: { type: "string", description: "One line on what the week is for" },
+        slots: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              kind: { type: "string", enum: ["quality", "long", "easy"] },
+              type: { type: "string", description: "Workout type for colours: intervals, tempo, race_pace, long, easy" },
+              title: { type: "string" },
+              description: { type: "string" },
+              target_distance: { type: "number", description: "km" },
+              target_pace: { type: "string" },
+              intervals: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    distance: { type: "string" },
+                    pace: { type: "string" },
+                    rest: { type: "string" },
+                    reps: { type: "number" },
+                  },
+                  required: ["distance", "pace", "rest", "reps"],
+                },
+              },
+              optional: { type: "boolean", description: "A bonus slot that doesn't count against the week" },
+              skipped: { type: "boolean", description: "Dropped this week (keeps it visible, filled by nothing)" },
+            },
+            required: ["id", "kind", "type", "title", "description"],
+          },
+        },
+      },
+      required: ["week_start", "status", "slots"],
+    },
+  },
+  {
+    name: "pin_run",
+    description: "Season mode: say which logged run filled a slot, overriding the app's automatic match (the run's numbers never change).",
+    input_schema: {
+      type: "object",
+      properties: {
+        week_start: { type: "string", description: "The week's Monday, YYYY-MM-DD" },
+        slot_id: { type: "string" },
+        date: { type: "string", description: "Date of the run, YYYY-MM-DD" },
+      },
+      required: ["week_start", "slot_id", "date"],
+    },
+  },
+  {
     name: "get_splits",
     description: "Get uploaded per-split detail (rep-by-rep distance, time, pace, heart rate) for sessions in a date range, inclusive. Your context already carries the last 14 days — use this to look further back, e.g. to compare today's reps against the same session three weeks ago.",
     input_schema: {
@@ -172,15 +241,24 @@ type CoachContext = {
   weeklyReviews: { weekStart: string; stats: unknown; review: string }[];
   checkpoints: { key: string; date: string; decision: string }[];
   splitUploads: unknown[];
+  season: unknown | null;
 };
 
+/** Days to the race plan's race, or null once it has passed (or there's no plan). */
+function daysUntilRace(plan: { raceDate: string } | null, today: string): number | null {
+  if (!plan) return null;
+  const days = Math.ceil((new Date(plan.raceDate + "T00:00:00").getTime() - new Date(today + "T00:00:00").getTime()) / 86400000);
+  return days >= 0 ? days : null;
+}
+
 function contextBlock(context: CoachContext): string {
-  const daysToRace = context.plan
-    ? Math.ceil((new Date(context.plan.raceDate + "T00:00:00").getTime() - new Date(context.today + "T00:00:00").getTime()) / 86400000)
-    : null;
+  const daysToRace = daysUntilRace(context.plan, context.today);
   return [
     `CURRENT TRAINING DATA (today: ${context.today}${daysToRace !== null ? `, ${daysToRace} days to race` : ""})`,
-    `Plan: ${JSON.stringify(context.plan)}`,
+    context.season
+      ? `SEASON (off-season plan; slot fills are app-computed ground truth): ${JSON.stringify(context.season)}`
+      : "No off-season plan active.",
+    `${context.season ? "Previous race plan (history)" : "Plan"}: ${JSON.stringify(context.plan)}`,
     `Workouts last 14 days + upcoming: ${JSON.stringify(context.workouts)}`,
     `THIS WEEK SO FAR (Mon-Sun, app-computed — treat as ground truth): ${JSON.stringify(context.currentWeek)}`,
     context.checkpoints.length > 0
@@ -240,6 +318,23 @@ async function runTool(
         description: input.description,
         targetDistance: input.target_distance,
         targetPace: input.target_pace,
+      });
+    case "get_week_plan":
+      return JSON.stringify(
+        weekForPrompt(await ctx.runQuery(internal.seasons.getWeekPlanInternal, { weekStart: input.week_start }))
+      );
+    case "set_week_slots":
+      return await ctx.runMutation(internal.seasons.setWeekSlots, {
+        weekStart: input.week_start,
+        status: input.status,
+        note: input.note,
+        slots: (input.slots ?? []).map(slotInputToSlot),
+      });
+    case "pin_run":
+      return await ctx.runMutation(internal.seasons.pinRunByDate, {
+        weekStart: input.week_start,
+        slotId: input.slot_id,
+        date: input.date,
       });
     case "get_splits":
       return JSON.stringify(
@@ -393,7 +488,11 @@ export const generateBriefing = internalAction({
     const todayHasPlannedRun = context.workouts.some(
       (w) => w.date === context.today && !w.isUnplanned && isRun(w)
     );
-    if (!args.force && !yesterdayHadRun && !todayHasPlannedRun && newlyMissed === 0) {
+    // Season weeks have no dated runs to brief on, so Monday (a new week of
+    // slots) is the other reason to write one.
+    const isMonday = new Date(context.today + "T12:00:00").getDay() === 1;
+    const seasonMonday = context.season !== null && isMonday;
+    if (!args.force && !yesterdayHadRun && !todayHasPlannedRun && !seasonMonday && newlyMissed === 0) {
       console.log(`Briefing skipped for ${context.today}: no run yesterday, none planned today`);
       return;
     }
@@ -495,26 +594,21 @@ export const generateWeeklyReview = internalAction({
     }
 
     const input = await ctx.runQuery(internal.coach.getWeekReviewInput);
-    const daysToRace = input.plan
-      ? Math.ceil(
-          (new Date(input.plan.raceDate + "T00:00:00").getTime() -
-            new Date(input.today + "T00:00:00").getTime()) /
-            86400000
-        )
-      : null;
+    const daysToRace = daysUntilRace(input.plan, input.today);
+    const inSeason = input.season !== null;
 
     const client = new Anthropic();
-    const response = await createMessage(client, {
-      model: MODEL,
-      max_tokens: 2048,
-      system: [{ type: "text", text: SYSTEM_PROMPT }],
-      tools: [WEEKLY_REVIEW_TOOL],
-      tool_choice: { type: "tool", name: WEEKLY_REVIEW_TOOL.name },
-      messages: [
+    const messages: Anthropic.Beta.BetaMessageParam[] = [
         {
           role: "user",
           content: [
             `Write the weekly review. Today is ${input.today}${daysToRace !== null ? ` (${daysToRace} days to race)` : ""}.`,
+            ...(inSeason
+              ? [
+                  `SEASON (off-season plan; slot fills are app-computed ground truth): ${JSON.stringify(input.season)}`,
+                  `Before writing the review, plan with set_week_slots: set the coming week (${input.nextWeekStart}, status "set") from what was actually run in the reviewed week, and draft the week after (status "draft"). Keep slot ids stable. The lookahead must say what you set.`,
+                ]
+              : []),
             `The completed week to review runs ${input.weekStart} to ${addDaysIso(input.weekStart, 6)} (Mon-Sun). The week to look ahead to starts ${input.nextWeekStart}.`,
             `Plan: ${JSON.stringify(input.plan)}`,
             `Completed week's app-computed stats (ground truth): ${JSON.stringify(input.stats)}`,
@@ -535,15 +629,43 @@ export const generateWeeklyReview = internalAction({
             "Fill in write_weekly_review. The recap looks back only; the lookahead, targets and reminders look forward only. Quote the app-computed numbers, not your own arithmetic. If the completed week has no logged runs, say so in one neutral sentence and spend the recap on the trend instead.",
           ].join("\n"),
         },
-      ],
-    });
+    ];
 
-    if (response.stop_reason === "refusal") return;
+    // In season mode the review also plans: it may call the slot tools first,
+    // so loop until write_weekly_review arrives. Outside a season it's the one
+    // forced call it always was.
+    const seasonTools = TOOLS.filter((t) => ["get_week_plan", "set_week_slots", "pin_run"].includes(t.name));
+    let response: Anthropic.Beta.BetaMessage | null = null;
+    let toolUse: Anthropic.Beta.BetaToolUseBlock | undefined;
+    for (let turn = 0; turn < (inSeason ? 5 : 1); turn++) {
+      const isLastTurn = turn === (inSeason ? 4 : 0);
+      response = await createMessage(client, {
+        model: MODEL,
+        max_tokens: 4096,
+        system: [{ type: "text", text: SYSTEM_PROMPT }],
+        tools: inSeason ? [...seasonTools, WEEKLY_REVIEW_TOOL] : [WEEKLY_REVIEW_TOOL],
+        tool_choice:
+          inSeason && !isLastTurn ? { type: "auto" } : { type: "tool", name: WEEKLY_REVIEW_TOOL.name },
+        messages,
+      });
+      if (response.stop_reason === "refusal") return;
 
-    const toolUse = response.content.find(
-      (b): b is Anthropic.Beta.BetaToolUseBlock =>
-        b.type === "tool_use" && b.name === WEEKLY_REVIEW_TOOL.name
-    );
+      toolUse = response.content.find(
+        (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use" && b.name === WEEKLY_REVIEW_TOOL.name
+      );
+      if (toolUse) break;
+      const planning = response.content.filter(
+        (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use"
+      );
+      if (planning.length === 0) {
+        messages.push({ role: "assistant", content: response.content });
+        messages.push({ role: "user", content: "Now call write_weekly_review." });
+        continue;
+      }
+      messages.push({ role: "assistant", content: response.content });
+      messages.push({ role: "user", content: await runToolCalls(ctx, planning) });
+    }
+    if (!response) return;
     const output = toolUse ? (toolUse.input as Partial<WeeklyReviewOutput>) : null;
     const asLines = (v: unknown): string[] | undefined =>
       Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "") : undefined;
