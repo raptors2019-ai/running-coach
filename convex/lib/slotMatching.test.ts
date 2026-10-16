@@ -163,3 +163,24 @@ describe("slotWeekStats", () => {
     });
   });
 });
+
+describe("weekRuns on unplanned split sessions", () => {
+  it("treats short same-day runs beside a main effort as segments", () => {
+    const rows: MatchableRun[] = [
+      run("wu", 2, "8:10", { date: "2026-10-16" }),
+      run("main", 5, "5:10", { date: "2026-10-16" }),
+      run("cd", 1.5, "8:30", { date: "2026-10-16" }),
+      run("long", 12, "7:05", { date: "2026-10-18" }),
+    ];
+    expect(weekRuns(rows).map((r) => r._id)).toEqual(["main", "long"]);
+  });
+
+  it("keeps a short run on a day of its own, and two real runs on one day", () => {
+    const rows: MatchableRun[] = [
+      run("shakeout", 2.2, "7:30", { date: "2026-10-14" }),
+      run("am", 6, "7:00", { date: "2026-10-15" }),
+      run("pm", 5, "6:50", { date: "2026-10-15" }),
+    ];
+    expect(weekRuns(rows).map((r) => r._id)).toEqual(["shakeout", "am", "pm"]);
+  });
+});

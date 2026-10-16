@@ -2,11 +2,12 @@
 
 import { useQuery } from "convex/react";
 import { Snowflake } from "lucide-react";
+import { getLocalDateString } from "@/lib/pace-utils";
 import { api } from "../../../convex/_generated/api";
 
 /** "Base · Wk 1 of 9": stands in for the race countdown while a season runs. */
 export function SeasonBadge() {
-  const active = useQuery(api.seasons.getActiveSeason);
+  const active = useQuery(api.seasons.getActiveSeason, { today: getLocalDateString() });
   if (!active?.phase) return null;
   const { phase } = active;
   return (

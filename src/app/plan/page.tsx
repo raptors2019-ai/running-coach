@@ -5,12 +5,13 @@ import { CountdownBadge } from "@/components/countdown-badge";
 import Link from "next/link";
 import { BookOpen, Wind } from "lucide-react";
 import { useQuery } from "convex/react";
+import { getLocalDateString } from "@/lib/pace-utils";
 import { api } from "../../../convex/_generated/api";
 import { SeasonPlanView } from "@/components/season/season-plan-view";
 import { SeasonBadge } from "@/components/season/season-badge";
 
 export default function PlanPage() {
-  const active = useQuery(api.seasons.getActiveSeason);
+  const active = useQuery(api.seasons.getActiveSeason, { today: getLocalDateString() });
   // Hold the page until we know which mode it's in, so the race plan never flashes.
   if (active === undefined) return <div className="min-h-screen" />;
 

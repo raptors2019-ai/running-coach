@@ -650,13 +650,19 @@ export const generateWeeklyReview = internalAction({
       });
       if (response.stop_reason === "refusal") return;
 
+      const planning = response.content.filter(
+        (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use" && b.name !== WEEKLY_REVIEW_TOOL.name
+      );
       toolUse = response.content.find(
         (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use" && b.name === WEEKLY_REVIEW_TOOL.name
       );
-      if (toolUse) break;
-      const planning = response.content.filter(
-        (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use"
-      );
+      if (toolUse) {
+        // Slot writes that came in the same turn as the review still happen,
+        // so the lookahead never claims a plan that wasn't saved.
+        if (planning.length > 0) await runToolCalls(ctx, planning);
+        break;
+      }
+      if (response.content.length === 0) break;
       if (planning.length === 0) {
         messages.push({ role: "assistant", content: response.content });
         messages.push({ role: "user", content: "Now call write_weekly_review." });

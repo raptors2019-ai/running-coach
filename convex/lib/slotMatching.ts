@@ -29,10 +29,16 @@ const secPerKm = (r: MatchableRun) =>
 /**
  * The runs that can fill a week's slots: logged runs with a distance.
  * Warmup and cooldown rows are pieces of the main session, not runs of
- * their own, so they never fill a slot.
+ * their own, so they never fill a slot. The sync only labels them when the
+ * day had a planned row — season weeks don't — so a run under 3 km on a
+ * day that also has a run of 3 km+ counts as a segment too.
  */
 export function weekRuns<T extends MatchableRun>(rows: T[]): T[] {
-  return rows.filter((r) => r.completed && (r.actualDistance ?? 0) > 0 && isRun(r) && !isSegment(r.title));
+  const runs = rows.filter((r) => r.completed && (r.actualDistance ?? 0) > 0 && isRun(r) && !isSegment(r.title));
+  const daysWithMainEffort = new Set(
+    runs.filter((r) => (r.actualDistance ?? 0) >= MIN_QUALITY_KM).map((r) => r.date)
+  );
+  return runs.filter((r) => (r.actualDistance ?? 0) >= MIN_QUALITY_KM || !daysWithMainEffort.has(r.date));
 }
 
 /**

@@ -80,16 +80,28 @@ export async function loadSeasonWeek(ctx: QueryCtx, weekStart: string) {
       actualDistance: w.actualDistance,
     })),
     totals: {
-      runKm: Math.round(runs.reduce((km, r) => km + (r.actualDistance ?? 0), 0) * 10) / 10,
+      // Distance counts warmups and cooldowns too; only the run count skips them.
+      runKm:
+        Math.round(
+          rows
+            .filter((w) => w.completed && (isRunningType(w.type) || (w.originalType ? isRunningType(w.originalType) : false)))
+            .reduce((km, w) => km + (w.actualDistance ?? 0), 0) * 10
+        ) / 10,
       runs: runs.length,
       crossCount: crossTraining.length,
     },
   };
 }
 
+/**
+ * Takes today from the client (like getTodayWorkout): a query that read the
+ * clock itself would only re-run when seasons change, so a tab left open
+ * over Sunday night would keep showing last week.
+ */
 export const getActiveSeason = query({
-  handler: async (ctx) => {
-    const today = todayToronto();
+  args: { today: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const today = args.today ?? todayToronto();
     const season = await activeSeason(ctx, today);
     if (!season) return null;
     return {

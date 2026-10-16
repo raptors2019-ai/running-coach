@@ -28,7 +28,7 @@ export default function HomePage() {
   const plan = useQuery(api.workouts.getTrainingPlan);
   const workouts = useQuery(api.workouts.getAllWorkouts);
 
-  const active = useQuery(api.seasons.getActiveSeason);
+  const active = useQuery(api.seasons.getActiveSeason, { today: getLocalDateString() });
 
   const stats = workouts ? getWeeklyStats(workouts, getLocalDateString()) : null;
 
