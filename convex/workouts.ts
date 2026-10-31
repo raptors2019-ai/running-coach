@@ -1,8 +1,10 @@
-import { query, mutation, internalMutation } from "./_generated/server";
-import { v } from "convex/values";
+import { query, mutation, internalMutation, type MutationCtx } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import { v, type Infer } from "convex/values";
 import { isRunningType, formatPaceWithUnit, inferWeekNumber, getDayOfWeek, segmentRole } from "./lib/stravaMapping";
 import { swapPlanPatches } from "./lib/planSwap";
 import { choosePlannedRow, pickBestActivity, adoptUnplannedRun } from "./lib/syncMatching";
+import { isAppleId, isRunActivity, isSameActivity, mapAppleWorkoutType } from "./lib/appleHealth";
 
 export const getTrainingPlan = query({
   handler: async (ctx) => {
@@ -207,174 +209,215 @@ export const getUpcomingWorkouts = query({
   },
 });
 
+const activityValidator = v.object({
+  date: v.string(),
+  startTime: v.optional(v.string()),
+  // Strava's activity id, or "ah:<id>" for an Apple Health workout.
+  stravaActivityId: v.string(),
+  actualDistance: v.number(),
+  actualDuration: v.number(),
+  avgHeartRate: v.optional(v.number()),
+  mappedType: v.string(),
+  mappedTitle: v.string(),
+  activityName: v.string(),
+});
+export type SyncedActivity = Infer<typeof activityValidator>;
+
 export const autoCompleteFromActivities = internalMutation({
-  args: {
-    activities: v.array(v.object({
-      date: v.string(),
-      startTime: v.optional(v.string()),
-      stravaActivityId: v.string(),
-      actualDistance: v.number(),
-      actualDuration: v.number(),
-      avgHeartRate: v.optional(v.number()),
-      mappedType: v.string(),
-      mappedTitle: v.string(),
-      activityName: v.string(),
-    })),
-  },
-  handler: async (ctx, args): Promise<{ autoCompleted: number; alreadyDone: number; newActivitiesCreated: number }> => {
-    let autoCompleted = 0;
-    let alreadyDone = 0;
-    let newActivitiesCreated = 0;
+  args: { activities: v.array(activityValidator) },
+  handler: async (ctx, args) => autoCompleteActivities(ctx, args.activities),
+});
 
-    const plan = await ctx.db.query("trainingPlan").first();
+/**
+ * Completes planned rows from synced activities and inserts the leftovers as
+ * unplanned rows. Shared by the Strava sync (through autoCompleteFromActivities)
+ * and the Apple Health ingest, which calls it inside its own mutation so the
+ * dedupe check and the insert are one transaction.
+ */
+export async function autoCompleteActivities(
+  ctx: MutationCtx,
+  activities: SyncedActivity[]
+): Promise<{ autoCompleted: number; alreadyDone: number; newActivitiesCreated: number }> {
+  let autoCompleted = 0;
+  let alreadyDone = 0;
+  let newActivitiesCreated = 0;
 
-    // A day the athlete ticked off by hand before the sync ran holds a
-    // placeholder plus an unplanned row for the real run — fold them together
-    // first, so the planned row carries the Strava numbers.
-    const allWorkouts = await ctx.db.query("workouts").collect();
-    const rowsByDate = new Map<string, typeof allWorkouts>();
-    for (const w of allWorkouts) {
-      const group = rowsByDate.get(w.date) ?? [];
-      group.push(w);
-      rowsByDate.set(w.date, group);
+  const plan = await ctx.db.query("trainingPlan").first();
+
+  // A day the athlete ticked off by hand before the sync ran holds a
+  // placeholder plus an unplanned row for the real run — fold them together
+  // first, so the planned row carries the synced numbers.
+  const allWorkouts = await ctx.db.query("workouts").collect();
+  const rowsByDate = new Map<string, typeof allWorkouts>();
+  for (const w of allWorkouts) {
+    const group = rowsByDate.get(w.date) ?? [];
+    group.push(w);
+    rowsByDate.set(w.date, group);
+  }
+  for (const rows of rowsByDate.values()) {
+    const adoption = adoptUnplannedRun(rows);
+    if (!adoption) continue;
+    const plannedId = adoption.plannedId as Id<"workouts">;
+    const unplannedId = adoption.unplannedId as Id<"workouts">;
+    await ctx.db.patch(plannedId, adoption.patch);
+    await ctx.db.delete(unplannedId);
+    // Apple Health detail follows its activity onto the planned row.
+    for (const d of await ctx.db.query("activityDetails").withIndex("by_workout", (q) => q.eq("workoutId", unplannedId)).collect()) {
+      await ctx.db.patch(d._id, { workoutId: plannedId });
     }
-    for (const rows of rowsByDate.values()) {
-      const adoption = adoptUnplannedRun(rows);
-      if (!adoption) continue;
-      await ctx.db.patch(adoption.plannedId as (typeof rows)[number]["_id"], adoption.patch);
-      await ctx.db.delete(adoption.unplannedId as (typeof rows)[number]["_id"]);
-    }
+  }
 
-    // Build set of already-synced activity IDs
-    const syncedIds = new Set(
-      allWorkouts.filter((w) => w.stravaActivityId).map((w) => w.stravaActivityId!)
+  // Build set of already-synced activity IDs
+  const syncedIds = new Set(
+    allWorkouts.filter((w) => w.stravaActivityId).map((w) => w.stravaActivityId!)
+  );
+
+  // A Strava activity already ingested from Apple Health (start within 5
+  // minutes) is the same workout recorded twice — keep the Apple one.
+  const appleByDate = new Map<string, Doc<"activityDetails">[]>();
+  for (const date of new Set(activities.filter((a) => !isAppleId(a.stravaActivityId)).map((a) => a.date))) {
+    appleByDate.set(
+      date,
+      await ctx.db.query("activityDetails").withIndex("by_date", (q) => q.eq("date", date)).collect()
+    );
+  }
+  const isAppleDuplicate = (a: SyncedActivity) =>
+    !isAppleId(a.stravaActivityId) &&
+    (appleByDate.get(a.date) ?? []).some(
+      (d) =>
+        !d.duplicateOf &&
+        isSameActivity(
+          { startTime: a.startTime, durationS: a.actualDuration, isRun: isRunActivity(a.mappedType) },
+          { startTime: d.startTime, durationS: d.durationS, isRun: isRunActivity(mapAppleWorkoutType(d.appleType, d.name)) }
+        )
     );
 
-    // Filter out already-synced activities
-    const newActivities = args.activities.filter((a) => !syncedIds.has(a.stravaActivityId));
+  // Filter out already-synced activities
+  const newActivities = activities.filter(
+    (a) => !syncedIds.has(a.stravaActivityId) && !isAppleDuplicate(a)
+  );
 
-    // Group activities by date
-    const byDate = new Map<string, typeof newActivities>();
-    for (const activity of newActivities) {
-      const group = byDate.get(activity.date) || [];
-      group.push(activity);
-      byDate.set(activity.date, group);
+  // Group activities by date
+  const byDate = new Map<string, typeof newActivities>();
+  for (const activity of newActivities) {
+    const group = byDate.get(activity.date) || [];
+    group.push(activity);
+    byDate.set(activity.date, group);
+  }
+
+  for (const [date, dateActivities] of byDate) {
+    const workoutsForDate = await ctx.db
+      .query("workouts")
+      .withIndex("by_date", (q) => q.eq("date", date))
+      .collect();
+
+    // The planned row this day's activity should complete: an open one, or
+    // a placeholder the athlete ticked off by hand (its numbers get replaced).
+    const plannedWorkout = choosePlannedRow(workoutsForDate);
+
+    // Check which activities already matched existing workouts
+    const existingSyncedIds = new Set(
+      workoutsForDate.filter((w) => w.stravaActivityId).map((w) => w.stravaActivityId!)
+    );
+    const unmatched = dateActivities.filter((a) => !existingSyncedIds.has(a.stravaActivityId));
+
+    if (unmatched.length === 0) {
+      alreadyDone += dateActivities.length;
+      continue;
     }
 
-    for (const [date, dateActivities] of byDate) {
-      const workoutsForDate = await ctx.db
-        .query("workouts")
-        .withIndex("by_date", (q) => q.eq("date", date))
-        .collect();
+    let bestMatchIdx = -1;
 
-      // The planned row this day's activity should complete: an open one, or
-      // a placeholder the athlete ticked off by hand (its numbers get replaced).
-      const plannedWorkout = choosePlannedRow(workoutsForDate);
+    if (plannedWorkout) {
+      // Score each activity against the planned workout type. Sessions are
+      // often logged as several activities (warmup / hard effort / cooldown
+      // recorded separately), which tie on type affinity — break ties by
+      // pace closest to the planned target so the warmup doesn't claim a
+      // time trial. Without a target pace, prefer the longest activity.
+      bestMatchIdx = pickBestActivity(plannedWorkout, unmatched);
 
-      // Check which activities already matched existing workouts
-      const existingSyncedIds = new Set(
-        workoutsForDate.filter((w) => w.stravaActivityId).map((w) => w.stravaActivityId!)
-      );
-      const unmatched = dateActivities.filter((a) => !existingSyncedIds.has(a.stravaActivityId));
+      // Patch the planned workout with the best match
+      const bestActivity = unmatched[bestMatchIdx];
+      const pace = bestActivity.actualDistance > 0
+        ? formatPaceWithUnit(bestActivity.actualDistance, bestActivity.actualDuration)
+        : undefined;
 
-      if (unmatched.length === 0) {
-        alreadyDone += dateActivities.length;
-        continue;
+      const plannedIsRun = isRunningType(plannedWorkout.type);
+      const activityIsRun = bestActivity.mappedType === "run" || isRunningType(bestActivity.mappedType);
+
+      const patch: Record<string, unknown> = {
+        completed: true,
+        missedAt: undefined,
+        actualDistance: bestActivity.actualDistance,
+        actualDuration: bestActivity.actualDuration,
+        actualPace: pace,
+        avgHeartRate: bestActivity.avgHeartRate,
+        stravaActivityId: bestActivity.stravaActivityId,
+      };
+
+      if (plannedIsRun && !activityIsRun) {
+        patch.originalType = plannedWorkout.type;
+        patch.type = bestActivity.mappedType;
+        patch.title = bestActivity.mappedTitle;
+        patch.notes = `Originally planned: ${plannedWorkout.title}. Did: ${bestActivity.activityName}`;
+      } else if (!plannedIsRun && activityIsRun) {
+        patch.originalType = plannedWorkout.type;
+        patch.type = "easy";
+        patch.title = "Easy Run";
+        patch.notes = `Originally planned: ${plannedWorkout.title}. Did: ${bestActivity.activityName}`;
       }
 
-      let bestMatchIdx = -1;
-
-      if (plannedWorkout) {
-        // Score each activity against the planned workout type. Sessions are
-        // often logged as several activities (warmup / hard effort / cooldown
-        // recorded separately), which tie on type affinity — break ties by
-        // pace closest to the planned target so the warmup doesn't claim a
-        // time trial. Without a target pace, prefer the longest activity.
-        bestMatchIdx = pickBestActivity(plannedWorkout, unmatched);
-
-        // Patch the planned workout with the best match
-        const bestActivity = unmatched[bestMatchIdx];
-        const pace = bestActivity.actualDistance > 0
-          ? formatPaceWithUnit(bestActivity.actualDistance, bestActivity.actualDuration)
-          : undefined;
-
-        const plannedIsRun = isRunningType(plannedWorkout.type);
-        const activityIsRun = bestActivity.mappedType === "run" || isRunningType(bestActivity.mappedType);
-
-        const patch: Record<string, unknown> = {
-          completed: true,
-          missedAt: undefined,
-          actualDistance: bestActivity.actualDistance,
-          actualDuration: bestActivity.actualDuration,
-          actualPace: pace,
-          avgHeartRate: bestActivity.avgHeartRate,
-          stravaActivityId: bestActivity.stravaActivityId,
-        };
-
-        if (plannedIsRun && !activityIsRun) {
-          patch.originalType = plannedWorkout.type;
-          patch.type = bestActivity.mappedType;
-          patch.title = bestActivity.mappedTitle;
-          patch.notes = `Originally planned: ${plannedWorkout.title}. Did: ${bestActivity.activityName}`;
-        } else if (!plannedIsRun && activityIsRun) {
-          patch.originalType = plannedWorkout.type;
-          patch.type = "easy";
-          patch.title = "Easy Run";
-          patch.notes = `Originally planned: ${plannedWorkout.title}. Did: ${bestActivity.activityName}`;
-        }
-
-        await ctx.db.patch(plannedWorkout._id, patch);
-        autoCompleted++;
-      }
-
-      // Create new workout records for remaining activities. When the day's
-      // planned run was matched, leftover run activities are almost always the
-      // rest of the same session recorded separately — label them by role so
-      // the calendar and the coach read the day correctly.
-      const mainEffort = bestMatchIdx >= 0 ? unmatched[bestMatchIdx] : null;
-      for (let i = 0; i < unmatched.length; i++) {
-        if (i === bestMatchIdx) continue;
-        const activity = unmatched[i];
-        const pace = activity.actualDistance > 0
-          ? formatPaceWithUnit(activity.actualDistance, activity.actualDuration)
-          : undefined;
-
-        let title = activity.mappedTitle;
-        let description = activity.activityName;
-        if (
-          mainEffort &&
-          plannedWorkout &&
-          isRunningType(plannedWorkout.type) &&
-          activity.mappedType === "run" &&
-          mainEffort.mappedType === "run"
-        ) {
-          const role = segmentRole(activity, mainEffort);
-          if (role) {
-            title = `${role} — ${plannedWorkout.title}`;
-            description = `${role} recorded separately from the main effort (${activity.activityName}).`;
-          }
-        }
-
-        await ctx.db.insert("workouts", {
-          planId: plan?._id ?? workoutsForDate[0]?.planId ?? ("" as never),
-          date: activity.date,
-          weekNumber: plan ? inferWeekNumber(activity.date, plan.startDate) : 1,
-          dayOfWeek: getDayOfWeek(activity.date),
-          type: activity.mappedType,
-          title,
-          description,
-          completed: true,
-          actualDistance: activity.actualDistance,
-          actualDuration: activity.actualDuration,
-          actualPace: pace,
-          avgHeartRate: activity.avgHeartRate,
-          stravaActivityId: activity.stravaActivityId,
-          isUnplanned: true,
-        });
-        newActivitiesCreated++;
-      }
+      await ctx.db.patch(plannedWorkout._id, patch);
+      autoCompleted++;
     }
 
-    return { autoCompleted, alreadyDone, newActivitiesCreated };
-  },
-});
+    // Create new workout records for remaining activities. When the day's
+    // planned run was matched, leftover run activities are almost always the
+    // rest of the same session recorded separately — label them by role so
+    // the calendar and the coach read the day correctly.
+    const mainEffort = bestMatchIdx >= 0 ? unmatched[bestMatchIdx] : null;
+    for (let i = 0; i < unmatched.length; i++) {
+      if (i === bestMatchIdx) continue;
+      const activity = unmatched[i];
+      const pace = activity.actualDistance > 0
+        ? formatPaceWithUnit(activity.actualDistance, activity.actualDuration)
+        : undefined;
+
+      let title = activity.mappedTitle;
+      let description = activity.activityName;
+      if (
+        mainEffort &&
+        plannedWorkout &&
+        isRunningType(plannedWorkout.type) &&
+        activity.mappedType === "run" &&
+        mainEffort.mappedType === "run"
+      ) {
+        const role = segmentRole(activity, mainEffort);
+        if (role) {
+          title = `${role} — ${plannedWorkout.title}`;
+          description = `${role} recorded separately from the main effort (${activity.activityName}).`;
+        }
+      }
+
+      await ctx.db.insert("workouts", {
+        planId: plan?._id ?? workoutsForDate[0]?.planId ?? ("" as never),
+        date: activity.date,
+        weekNumber: plan ? inferWeekNumber(activity.date, plan.startDate) : 1,
+        dayOfWeek: getDayOfWeek(activity.date),
+        type: activity.mappedType,
+        title,
+        description,
+        completed: true,
+        actualDistance: activity.actualDistance,
+        actualDuration: activity.actualDuration,
+        actualPace: pace,
+        avgHeartRate: activity.avgHeartRate,
+        stravaActivityId: activity.stravaActivityId,
+        isUnplanned: true,
+      });
+      newActivitiesCreated++;
+    }
+  }
+
+  return { autoCompleted, alreadyDone, newActivitiesCreated };
+}

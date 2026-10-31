@@ -18,6 +18,8 @@ import { slotWeekStats } from "./lib/slotMatching";
 import { activeSeason, loadSeasonWeek } from "./seasons";
 import { weekForPrompt } from "./lib/seasonPrompt";
 import { nextCheckpoint, phaseFor, seasonWeekIndex } from "./lib/season";
+import { detailForPrompt } from "./lib/appleHealth";
+import { replayAppleDate } from "./appleHealth";
 
 function todayToronto(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Toronto" });
@@ -46,7 +48,25 @@ function previousWeekStart(today: string): string {
 }
 
 /** The subset of a workout row the coach needs to reason about a week. */
-function slimWorkout(w: Doc<"workouts">) {
+/**
+ * Per workout row, the Apple Health detail the coach reads on it: heart-rate
+ * profile and energy, which is what makes a lift or a basketball game
+ * legible as training load when it has no distance or pace.
+ */
+async function activityByWorkout(ctx: QueryCtx | MutationCtx, start: string, end?: string) {
+  const details = await ctx.db
+    .query("activityDetails")
+    .withIndex("by_date", (q) => {
+      const from = q.gte("date", start);
+      return end ? from.lte("date", end) : from;
+    })
+    .collect();
+  const map = new Map<string, ReturnType<typeof detailForPrompt>>();
+  for (const d of details) if (d.workoutId) map.set(d.workoutId, detailForPrompt(d));
+  return map;
+}
+
+function slimWorkout(w: Doc<"workouts">, activity: Map<string, ReturnType<typeof detailForPrompt>>) {
   return {
     date: w.date,
     day: w.dayOfWeek,
@@ -65,6 +85,7 @@ function slimWorkout(w: Doc<"workouts">) {
     isUnplanned: w.isUnplanned,
     originalType: w.originalType,
     notes: w.notes,
+    activity: activity.get(w._id),
   };
 }
 
@@ -215,10 +236,11 @@ export const getWeekReviewInput = internalQuery({
     const nextWeekStart = addDays(weekStart, 7);
 
     const stats = await computeWeekStats(ctx, weekStart);
-    const workouts = (await workoutsInWeek(ctx, weekStart)).map(slimWorkout);
+    const activity = await activityByWorkout(ctx, weekStart, weekEnd);
+    const workouts = (await workoutsInWeek(ctx, weekStart)).map((w) => slimWorkout(w, activity));
     const nextWeekWorkouts = (await workoutsInWeek(ctx, nextWeekStart))
       .filter((w) => !w.isUnplanned)
-      .map(slimWorkout);
+      .map((w) => slimWorkout(w, activity));
 
     const journals = (await ctx.db.query("journalEntries").collect())
       .filter((j) => j.date >= weekStart && j.date <= weekEnd)
@@ -411,6 +433,7 @@ export const getCoachContext = internalQuery({
     const windowStart = new Date(today + "T12:00:00");
     windowStart.setDate(windowStart.getDate() - 14);
     const startStr = windowStart.toISOString().split("T")[0];
+    const activity = await activityByWorkout(ctx, startStr);
     const recentAndUpcoming = all
       .filter((w) => w.date >= startStr)
       .sort((a, b) => a.date.localeCompare(b.date))
@@ -430,6 +453,7 @@ export const getCoachContext = internalQuery({
         avgHeartRate: w.avgHeartRate,
         isUnplanned: w.isUnplanned,
         notes: w.notes,
+        activity: activity.get(w._id),
       }));
 
     const journals = await ctx.db.query("journalEntries").collect();
@@ -438,9 +462,9 @@ export const getCoachContext = internalQuery({
       .slice(0, 7)
       .map((j) => ({ date: j.date, mood: j.mood, notes: j.userNotes }));
 
-    // Per-split detail for the same window. Strava gives whole-activity
-    // numbers only, so for an interval session these lines are the only
-    // record of what each rep actually ran.
+    // Per-split detail for the same window. Synced activities carry
+    // whole-activity numbers only, so for an interval session these lines are
+    // the only record of what each rep actually ran.
     const splitUploads = (await ctx.db.query("splitUploads").collect())
       .filter((u) => u.status === "ready" && u.date >= startStr)
       .sort((a, b) => a.date.localeCompare(b.date))
@@ -675,10 +699,11 @@ export const coachAddWorkout = internalMutation({
 });
 
 /**
- * Reset one day's Strava sync state so the next sync can rematch it: planned
- * workouts revert to un-completed (restoring a sync-overwritten type), and
- * unplanned activity rows are removed. The activities' Strava IDs disappear
- * from the synced set, so an immediate re-sync re-imports and rematches them.
+ * Reset one day's sync state and rematch it: planned workouts revert to
+ * un-completed (restoring a sync-overwritten type), unplanned activity rows
+ * are removed, then the day's stored Apple Health workouts are re-imported.
+ * Strava activity IDs disappear from the synced set, so a Strava re-sync (if
+ * Strava is still connected) re-imports and rematches those.
  */
 export const coachRematchDate = internalMutation({
   args: { date: v.string() },
@@ -709,6 +734,9 @@ export const coachRematchDate = internalMutation({
         cleared++;
       }
     }
-    return `Reset ${cleared} planned workout(s), removed ${removed} unplanned activity row(s) on ${args.date}`;
+    const replayed = await replayAppleDate(ctx, args.date);
+    return `Reset ${cleared} planned workout(s), removed ${removed} unplanned activity row(s) on ${args.date}${
+      replayed > 0 ? `, re-imported ${replayed} Apple Health workout(s)` : ""
+    }`;
   },
 });

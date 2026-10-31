@@ -8,12 +8,15 @@
  * @module
  */
 
+import type * as appleHealth from "../appleHealth.js";
 import type * as backfill from "../backfill.js";
 import type * as coach from "../coach.js";
 import type * as coachActions from "../coachActions.js";
 import type * as crons from "../crons.js";
+import type * as http from "../http.js";
 import type * as journal from "../journal.js";
 import type * as lib_anthropicClient from "../lib/anthropicClient.js";
+import type * as lib_appleHealth from "../lib/appleHealth.js";
 import type * as lib_imageUploads from "../lib/imageUploads.js";
 import type * as lib_passcode from "../lib/passcode.js";
 import type * as lib_planSwap from "../lib/planSwap.js";
@@ -45,12 +48,15 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  appleHealth: typeof appleHealth;
   backfill: typeof backfill;
   coach: typeof coach;
   coachActions: typeof coachActions;
   crons: typeof crons;
+  http: typeof http;
   journal: typeof journal;
   "lib/anthropicClient": typeof lib_anthropicClient;
+  "lib/appleHealth": typeof lib_appleHealth;
   "lib/imageUploads": typeof lib_imageUploads;
   "lib/passcode": typeof lib_passcode;
   "lib/planSwap": typeof lib_planSwap;
