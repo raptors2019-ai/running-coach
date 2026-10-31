@@ -25,13 +25,15 @@ Your style: knowledgeable but human. Direct, encouraging, data-driven. Reference
 
 Think week-first: judge progress against THIS WEEK SO FAR and the WEEKLY REVIEW HISTORY (the trend across weeks), not just yesterday in isolation. The week stats are computed by the app — quote them as ground truth. Rest days and lift-only days are part of the plan, not gaps: they need no run commentary. A missed or unlogged run gets at most one neutral sentence, never speculation about what might have happened and never repeated across briefings. If yesterday has nothing worth saying, skip it entirely and lead with the week and today's focus — a short briefing is a good briefing.
 
-Strava data quirk: the athlete often records one session as several Strava activities (warmup, hard effort, cooldown logged separately). The sync attaches the activity whose pace best fits the planned target to the planned workout, and labels the leftovers by role — rows titled 'Warmup — ...' or 'Cooldown — ...' are segments of that day's session, so read the planned row as the main effort and the labeled rows as its bookends. If a day still looks mismatched (a time trial wearing a jogging pace, segments labeled wrong), call rematch_date for that day, then re-check with get_workouts before drawing conclusions.
+Activity data: workouts arrive synced from the athlete's watch. They often record one session as several activities (warmup, hard effort, cooldown logged separately). The sync attaches the activity whose pace best fits the planned target to the planned workout, and labels the leftovers by role — rows titled 'Warmup — ...' or 'Cooldown — ...' are segments of that day's session, so read the planned row as the main effort and the labeled rows as its bookends. If a day still looks mismatched (a time trial wearing a jogging pace, segments labeled wrong), call rematch_date for that day, then re-check with get_workouts before drawing conclusions.
 
-You can edit the plan with your tools when the athlete asks or when circumstances clearly require it (travel, illness, fatigue, missed sessions). Rules: a completed day's numbers are history and never change (rematch_date is the one exception, since it rebuilds a day from Strava rather than rewriting it) — but you may relabel a completed day with what was actually done, by moving the workout they did onto it (move_workout swaps plans, the logged run stays put) or with update_workout. When the athlete says they did one workout instead of another, apply that relabel first, then decide what the rest of the week needs: the displaced session gets a new day if it matters (quality, checkpoints, the long run), or is dropped if it was easy volume; protect quality sessions and checkpoint workouts — move them rather than drop them; easy volume is the first thing to cut; never stack hard days back to back; nothing hard in the final 3 days before a race or time trial. After making changes, summarize exactly what you changed. Dates are YYYY-MM-DD. If a request is ambiguous, make the sensible coaching call and say what you assumed.
+You can edit the plan with your tools when the athlete asks or when circumstances clearly require it (travel, illness, fatigue, missed sessions). Rules: a completed day's numbers are history and never change (rematch_date is the one exception, since it rebuilds a day from the synced activities rather than rewriting it) — but you may relabel a completed day with what was actually done, by moving the workout they did onto it (move_workout swaps plans, the logged run stays put) or with update_workout. When the athlete says they did one workout instead of another, apply that relabel first, then decide what the rest of the week needs: the displaced session gets a new day if it matters (quality, checkpoints, the long run), or is dropped if it was easy volume; protect quality sessions and checkpoint workouts — move them rather than drop them; easy volume is the first thing to cut; never stack hard days back to back; nothing hard in the final 3 days before a race or time trial. After making changes, summarize exactly what you changed. Dates are YYYY-MM-DD. If a request is ambiguous, make the sensible coaching call and say what you assumed.
 
 Missed runs: a workout flagged missed:true is one the app's morning check found unlogged after its day passed (with overnight grace for late uploads). When a run is newly missed, decide whether the week needs rebalancing and make the edits yourself: missed easy volume is usually absorbed, not crammed in later; the long run may shift within its own week; quality sessions and checkpoints get moved, never dropped. If no edit is needed, one neutral sentence at most. Whatever you do, state it plainly in the briefing.
 
-Splits: Strava's sync gives you whole-activity numbers only, so an interval session arrives as one meaningless average pace. The athlete fills that gap by uploading a screenshot of their watch's split table, which the app transcribes and lists as SPLIT UPLOADS in your context (get_splits fetches any date range, including older ones). Treat those splits as ground truth for what happened inside a session: judge a quality session on its work reps and their recoveries — rep-by-rep pace, heart rate and fade across reps — never on the session average. The paces there are computed by the app from distance and time, so quote them as they stand. A split marked "PACE DISAGREES WITH SCREENSHOT" may be a misread digit: say so rather than drawing a conclusion from it. If a hard session has no splits uploaded and the numbers you do have don't settle a question, it's fair to ask for the screenshot once.
+Heart rate and energy: a workout row may carry an activity object from the watch: avgHR, maxHR, minHR, activeKcal and totalKcal, hrMinutesByBand (minutes in each bpm band) and hrByQuarter (average bpm per quarter of the session), plus whatever else the watch recorded (elevation, cadence, power, steps). Use it for every kind of session, not only runs. Cross-training (lifting, basketball, rides, swims, walks, HIIT, yoga) has no pace, so judge its load from duration, heart rate and energy: an hour of basketball with most minutes above 150 bpm is a hard aerobic day, not a rest day, and belongs in the plan's hard-easy pattern next to quality runs; a lift that sits under 120 bpm costs the legs or upper body but little aerobic load; a long easy ride in low bands is base work. On runs, hrByQuarter rising at a steady pace is drift worth a word; hrMinutesByBand shows whether an easy run was really zone 2. Quote these numbers as they stand and never invent ones that aren't there; older rows have no activity object.
+
+Splits: synced workouts give you whole-activity numbers only, so an interval session arrives as one meaningless average pace. The athlete fills that gap by uploading a screenshot of their watch's split table, which the app transcribes and lists as SPLIT UPLOADS in your context (get_splits fetches any date range, including older ones). Treat those splits as ground truth for what happened inside a session: judge a quality session on its work reps and their recoveries — rep-by-rep pace, heart rate and fade across reps — never on the session average. The paces there are computed by the app from distance and time, so quote them as they stand. A split marked "PACE DISAGREES WITH SCREENSHOT" may be a misread digit: say so rather than drawing a conclusion from it. If a hard session has no splits uploaded and the numbers you do have don't settle a question, it's fair to ask for the screenshot once.
 
 Checkpoints: CHECKPOINT RESULTS in your context are ground truth for the goal — a recorded pass settles the question, never ask for a retest it already answered. When a checkpoint workout completes and no result is recorded yet, evaluate its decision rule against the actual numbers and store it with record_checkpoint (benchmark_2k = the Aug 27 2K TT, race_pace_3k = the Sep 15 3K @ 5:00), including goal_seconds when the outcome changes the race target.
 
@@ -103,7 +105,7 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
   },
   {
     name: "rematch_date",
-    description: "Re-run Strava matching for one date. Use when an auto-match looks wrong — e.g. a separately-logged warmup claimed a quality workout while the hard effort sits in an unplanned row. Clears the day's sync state and immediately re-syncs from Strava, then verify with get_workouts.",
+    description: "Re-run activity matching for one date. Use when an auto-match looks wrong — e.g. a separately-logged warmup claimed a quality workout while the hard effort sits in an unplanned row. Clears the day's sync state and re-imports that day's activities together, then verify with get_workouts.",
     input_schema: {
       type: "object",
       properties: { date: { type: "string", description: "YYYY-MM-DD" } },
@@ -307,8 +309,14 @@ async function runTool(
       return await ctx.runMutation(internal.coach.coachSetRestDay, { date: input.date });
     case "rematch_date": {
       const summary = await ctx.runMutation(internal.coach.coachRematchDate, { date: input.date });
-      await ctx.runAction(api.strava.syncAndAutoMatch, {});
-      return `${summary}; re-sync complete`;
+      // Older days were synced from Strava; re-fetch them when it's still
+      // connected. Apple Health days were already re-imported above.
+      try {
+        await ctx.runAction(api.strava.syncAndAutoMatch, {});
+        return `${summary}; re-sync complete`;
+      } catch {
+        return `${summary}; older activities could not be re-fetched, so only stored workouts were re-imported`;
+      }
     }
     case "add_workout":
       return await ctx.runMutation(internal.coach.coachAddWorkout, {
@@ -459,15 +467,10 @@ async function answer(ctx: ActionCtx): Promise<string> {
 export const generateBriefing = internalAction({
   args: { force: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
-    // Fresh data first — sync is best-effort, the briefing still runs without it
-    try {
-      await ctx.runAction(api.strava.syncAndAutoMatch, {});
-    } catch {
-      // Not connected or Strava down — brief on what we have
-    }
-
-    // After the sync (so late-evening uploads got their chance to complete a
-    // day), flag planned runs whose date passed with nothing logged.
+    // Workouts arrive pushed from Apple Health (the Shortcut's 10 PM catch-up
+    // covers anything the end-of-workout push missed), so there's no Strava
+    // pull here any more. Flag planned runs whose date passed with nothing
+    // logged.
     const newlyMissed: number = await ctx.runMutation(internal.workouts.markMissedRuns, {});
 
     const context: CoachContext = await ctx.runQuery(internal.coach.getCoachContext);
@@ -587,12 +590,6 @@ type WeeklyReviewOutput = {
 
 export const generateWeeklyReview = internalAction({
   handler: async (ctx) => {
-    try {
-      await ctx.runAction(api.strava.syncAndAutoMatch, {});
-    } catch {
-      // Best effort — review what we have
-    }
-
     const input = await ctx.runQuery(internal.coach.getWeekReviewInput);
     const daysToRace = daysUntilRace(input.plan, input.today);
     const inSeason = input.season !== null;

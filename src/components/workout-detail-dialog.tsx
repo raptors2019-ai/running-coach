@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useAction } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "../../convex/_generated/api";
 import { Doc, Id } from "../../convex/_generated/dataModel";
@@ -50,7 +50,6 @@ export function WorkoutDetailDialog({
   const unmarkComplete = useMutation(api.workouts.unmarkWorkoutComplete);
   const swapWorkoutDates = useMutation(api.workouts.swapWorkoutDates);
   const updateWorkoutType = useMutation(api.workouts.updateWorkoutType);
-  const syncAndAutoMatch = useAction(api.strava.syncAndAutoMatch);
   const router = useRouter();
 
   const isRestDay = isNonRunningType(workout.type);
@@ -86,8 +85,6 @@ export function WorkoutDetailDialog({
       setSubstituteError(e instanceof Error ? e.message.split("\n")[0] : String(e));
       return;
     }
-    // The day's plan just changed — let Strava's run land on it right away.
-    syncAndAutoMatch({}).catch(() => {});
     const message = substitutionMessage({ date: workout.date, did, insteadOf: plannedTitle(workout) });
     onOpenChange(false);
     router.push(`/coach?draft=${encodeURIComponent(message)}`);

@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { splitValidator } from "./lib/splitParsing";
 import { slotValidator } from "./lib/slots";
 import { seasonFields } from "./lib/seasonFields";
+import { appleWorkoutFields } from "./lib/appleHealth";
 
 export default defineSchema({
   trainingPlan: defineTable({
@@ -185,6 +186,22 @@ export default defineSchema({
     startLng: v.optional(v.number()),
   }).index("by_strava_id", ["stravaId"])
     .index("by_date", ["date"]),
+
+  // Full detail per Apple Health workout (any type: runs, lifts, basketball,
+  // rides...), pushed by the iPhone Shortcut to POST /apple-health/workout.
+  // `workouts` keeps the summary numbers the app already uses; heart-rate
+  // curve, energy, laps and route live here, linked to the row they became.
+  // A workout that duplicated an existing Strava row links to that row and
+  // records it in duplicateOf instead of creating a second row.
+  activityDetails: defineTable({
+    ...appleWorkoutFields,
+    source: v.literal("apple_health"),
+    workoutId: v.optional(v.id("workouts")),
+    duplicateOf: v.optional(v.string()), // the Strava activity id it matched
+    receivedAt: v.number(),
+  }).index("by_activity_id", ["activityId"])
+    .index("by_date", ["date"])
+    .index("by_workout", ["workoutId"]),
 
   weatherCache: defineTable({
     date: v.string(),

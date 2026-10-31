@@ -24,7 +24,10 @@
 - History is anchored to dates. Moving or swapping workouts exchanges the *plan*
   (type, title, description, targets, intervals); a date keeps its completion, Strava
   numbers and notes. Never move logged runs between dates.
-- Strava is the source of truth for a run's numbers. A quick-completed placeholder row
-  (target distance, no pace) gets replaced by the matching Strava activity on sync.
+- The synced activity is the source of truth for a workout's numbers: Apple Health
+  (pushed by an iPhone Shortcut to `POST /apple-health/workout`, ids `ah:<id>`, see
+  docs/apple-health-shortcut.md), or Strava for older history (auto-sync is off,
+  manual sync in Settings remains). A quick-completed placeholder row (target
+  distance, no pace) gets replaced by the matching activity when it arrives.
 - The coach may relabel a completed day with what was actually done, never its numbers.
 - Plan weeks run Monday–Sunday; runs before the plan start are week 0.
