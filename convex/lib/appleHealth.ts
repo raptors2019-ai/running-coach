@@ -365,11 +365,11 @@ function asArray(value: unknown): unknown[] | undefined {
 }
 
 /**
- * Heart-rate samples as [secondsFromStart, bpm], sorted and downsampled.
- * Each sample may be [t, bpm] or {t|time|date, bpm|value}; t is seconds from
- * the start, or a date/epoch that's converted relative to it.
+ * Valid heart-rate samples as [secondsFromStart, bpm], sorted, at full
+ * resolution. Each sample may be [t, bpm] or {t|time|date, bpm|value}; t is
+ * seconds from the start, or a date/epoch that's converted relative to it.
  */
-export function parseHrSeries(value: unknown, startMs: number): number[][] {
+export function parseHrSamples(value: unknown, startMs: number): number[][] {
   const items = asArray(value) ?? [];
   const points: number[][] = [];
   for (const item of items) {
@@ -395,7 +395,29 @@ export function parseHrSeries(value: unknown, startMs: number): number[][] {
     points.push([t, bpm]);
   }
   points.sort((a, b) => a[0] - b[0]);
-  return downsample(points, MAX_HR_POINTS).map(([t, bpm]) => [Math.round(t), Math.round(bpm)]);
+  return points;
+}
+
+/** Heart-rate samples (see parseHrSamples), downsampled for storage. */
+export function downsampleHr(samples: number[][]): number[][] {
+  return downsample(samples, MAX_HR_POINTS).map(([t, bpm]) => [Math.round(t), Math.round(bpm)]);
+}
+
+/**
+ * Average, max and min bpm over the full-resolution samples — bucket
+ * averaging for storage flattens the peaks and dips.
+ */
+export function hrStats(samples: number[][]): { avg: number; max: number; min: number } | undefined {
+  if (samples.length === 0) return undefined;
+  let sum = 0;
+  let max = -Infinity;
+  let min = Infinity;
+  for (const [, bpm] of samples) {
+    sum += bpm;
+    if (bpm > max) max = bpm;
+    if (bpm < min) min = bpm;
+  }
+  return { avg: Math.round(sum / samples.length), max: Math.round(max), min: Math.round(min) };
 }
 
 /** Route as [lat, lng] or [lat, lng, elevationM], downsampled. */
@@ -554,8 +576,9 @@ export function parseAppleWorkout(body: unknown): ParseResult {
   const endMs = endParsed !== undefined && endParsed > startMs ? endParsed : startMs + durationS * 1000;
 
   const startTime = torontoLocalTime(startMs);
-  const hr = parseHrSeries(b.hr, startMs);
-  const bpms = hr.map((p) => p[1]);
+  const hrSamples = parseHrSamples(b.hr, startMs);
+  const hr = downsampleHr(hrSamples);
+  const stats = hrStats(hrSamples);
   const laps = parseLaps(b.laps ?? b.segments, startMs);
   const route = parseRoute(b.route);
   const name = coerceText(b.name) ?? activityNameFor(appleType, startTime);
@@ -570,9 +593,9 @@ export function parseAppleWorkout(body: unknown): ParseResult {
     endMs,
     durationS,
     distanceKm: round(positive(coerceDistanceKm(b.distanceKm)), 2),
-    avgHR: round(positive(coerceNumber(b.avgHR))) ?? (bpms.length ? Math.round(bpms.reduce((s, x) => s + x, 0) / bpms.length) : undefined),
-    maxHR: round(positive(coerceNumber(b.maxHR))) ?? (bpms.length ? Math.max(...bpms) : undefined),
-    minHR: round(positive(coerceNumber(b.minHR))) ?? (bpms.length ? Math.min(...bpms) : undefined),
+    avgHR: round(positive(coerceNumber(b.avgHR))) ?? stats?.avg,
+    maxHR: round(positive(coerceNumber(b.maxHR))) ?? stats?.max,
+    minHR: round(positive(coerceNumber(b.minHR))) ?? stats?.min,
     activeEnergyKcal: round(positive(coerceKcal(b.activeEnergyKcal))),
     totalEnergyKcal: round(positive(coerceKcal(b.totalEnergyKcal))),
     steps: round(positive(coerceNumber(b.steps))),
@@ -607,6 +630,54 @@ export function toSyncedActivity(w: Pick<AppleWorkout, "activityId" | "appleType
     mappedTitle: workoutTitleForType(mappedType),
     activityName: w.name,
   };
+}
+
+// ---------- Same-day rematch ----------
+
+type SyncedRow = {
+  _id: string;
+  title: string;
+  isUnplanned?: boolean;
+  stravaActivityId?: string;
+  originalType?: string;
+  notes?: string;
+};
+
+/**
+ * Undoes what earlier Apple Health workouts did to a day's rows, so the day's
+ * workouts can be matched again as one batch when another arrives (the
+ * Shortcut pushes warmup, main effort and cooldown one at a time). Unplanned
+ * Apple rows go; a planned row an Apple workout completed reopens, getting
+ * back the type, title and note slot a mismatched activity took over. Strava
+ * rows, hand completions and the athlete's own notes stay as they are.
+ */
+export function appleSyncReset(rows: SyncedRow[]): { remove: string[]; reopen: { id: string; patch: Record<string, unknown> }[] } {
+  const remove: string[] = [];
+  const reopen: { id: string; patch: Record<string, unknown> }[] = [];
+  for (const w of rows) {
+    if (!isAppleId(w.stravaActivityId)) continue;
+    if (w.isUnplanned) {
+      remove.push(w._id);
+      continue;
+    }
+    const patch: Record<string, unknown> = {
+      completed: false,
+      actualDistance: undefined,
+      actualDuration: undefined,
+      actualPace: undefined,
+      avgHeartRate: undefined,
+      stravaActivityId: undefined,
+      missedAt: undefined,
+    };
+    if (w.originalType) {
+      // The sync left the planned title in its "Originally planned: X. Did: Y" note.
+      const plannedTitle = w.notes?.match(/Originally planned: (.+?)\. Did:/)?.[1];
+      Object.assign(patch, { type: w.originalType, originalType: undefined, notes: undefined });
+      if (plannedTitle) patch.title = plannedTitle;
+    }
+    reopen.push({ id: w._id, patch });
+  }
+  return { remove, reopen };
 }
 
 // ---------- Coach prompt ----------

@@ -1,6 +1,7 @@
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import {
+  appleSyncReset,
   appleWorkoutValidator,
   isAppleId,
   isRunActivity,
@@ -49,37 +50,46 @@ async function workoutIdFor(ctx: MutationCtx, date: string, activityId: string):
 /**
  * One Apple Health workout from POST /apple-health/workout. Idempotent on
  * the Shortcut's id; a workout Strava already recorded only stores its
- * detail against the Strava row. Otherwise it goes through the same matching
- * as a Strava activity (autoCompleteActivities), in this one transaction.
+ * detail against the Strava row. Otherwise the day's earlier Apple workouts
+ * are unmatched and all of them go through the same matching as a Strava
+ * batch (autoCompleteActivities via replayAppleDate), in this one
+ * transaction — the Shortcut sends warmup, main effort and cooldown one at a
+ * time, and the main effort should win the planned row however they arrive.
  */
+export async function ingestAppleWorkout(ctx: MutationCtx, workout: AppleWorkout) {
+  const seen = await ctx.db
+    .query("activityDetails")
+    .withIndex("by_activity_id", (q) => q.eq("activityId", workout.activityId))
+    .first();
+  if (seen) return { status: "duplicate" as const, workoutId: seen.workoutId };
+
+  const detail = { ...workout, source: "apple_health" as const, receivedAt: Date.now() };
+
+  const strava = await stravaDuplicate(ctx, workout);
+  if (strava) {
+    await ctx.db.insert("activityDetails", { ...detail, workoutId: strava._id, duplicateOf: strava.stravaActivityId });
+    return { status: "duplicate_of_strava" as const, workoutId: strava._id };
+  }
+
+  await ctx.db.insert("activityDetails", detail);
+  const { remove, reopen } = appleSyncReset(await rowsOn(ctx, workout.date));
+  for (const id of remove) await ctx.db.delete(id as Id<"workouts">);
+  for (const { id, patch } of reopen) await ctx.db.patch(id as Id<"workouts">, patch);
+  const rematched = await replayAppleDate(ctx, workout.date);
+  const workoutId = await workoutIdFor(ctx, workout.date, workout.activityId);
+  return { status: "created" as const, workoutId, rematched };
+}
+
 export const ingestWorkout = internalMutation({
   args: { workout: appleWorkoutValidator },
-  handler: async (ctx, { workout }) => {
-    const seen = await ctx.db
-      .query("activityDetails")
-      .withIndex("by_activity_id", (q) => q.eq("activityId", workout.activityId))
-      .first();
-    if (seen) return { status: "duplicate" as const, workoutId: seen.workoutId };
-
-    const detail = { ...workout, source: "apple_health" as const, receivedAt: Date.now() };
-
-    const strava = await stravaDuplicate(ctx, workout);
-    if (strava) {
-      await ctx.db.insert("activityDetails", { ...detail, workoutId: strava._id, duplicateOf: strava.stravaActivityId });
-      return { status: "duplicate_of_strava" as const, workoutId: strava._id };
-    }
-
-    const result = await autoCompleteActivities(ctx, [toSyncedActivity(workout)]);
-    const workoutId = await workoutIdFor(ctx, workout.date, workout.activityId);
-    await ctx.db.insert("activityDetails", { ...detail, workoutId });
-    return { status: "created" as const, workoutId, ...result };
-  },
+  handler: async (ctx, { workout }) => ingestAppleWorkout(ctx, workout),
 });
 
 /**
- * Re-imports a date's Apple Health workouts after coachRematchDate cleared
- * the day, so a rematch rebuilds from the stored detail instead of losing the
- * rows (there's nothing to re-fetch: the Shortcut pushes once). A workout
+ * Re-imports a date's Apple Health workouts after coachRematchDate (or a new
+ * Apple workout's ingest) cleared the day's Apple rows, so the rematch
+ * rebuilds from the stored detail instead of losing the rows (there's
+ * nothing to re-fetch: the Shortcut pushes once). A workout
  * that had deferred to a Strava row whose sync state was just cleared is
  * imported in its own right; a later Strava sync then defers to it.
  */

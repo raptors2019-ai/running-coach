@@ -182,10 +182,16 @@ catch-up.
 - **Workouts row:** the workout goes through the same matching as a Strava
   activity (`autoCompleteFromActivities` logic) with `stravaActivityId =
   "ah:<id>"`. It completes the day's planned row or becomes an unplanned row.
-  Date and start time are Toronto local.
+  Date and start time are Toronto local. Each push rematches all of that day's
+  Apple workouts together. The Apple rows are reset first, so a warmup, main
+  effort and cooldown sent one at a time end up matched the same way as a
+  Strava batch: the main effort takes the planned row and the others are
+  labelled Warmup/Cooldown. Strava rows and hand completions are not touched.
 - **Detail:** everything lands in `activityDetails` (keyed by `activityId`, linked
   by `workoutId`). The coach sees an `activity` summary on each linked row:
-  HR, minutes per HR band, HR per quarter, and energy.
+  HR, minutes per HR band, HR per quarter, and energy. If the payload doesn't
+  send avg/max/min HR, they're computed from the full sample series, before
+  it's downsampled to 600 points for storage.
 - **Dedupe:**
   - The same `id` is idempotent.
   - When a Strava-synced row on the same date records the same workout, no

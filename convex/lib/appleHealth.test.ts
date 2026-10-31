@@ -1,5 +1,6 @@
 import {
   activityNameFor,
+  appleSyncReset,
   coerceDistanceKm,
   coerceDurationSeconds,
   coerceKcal,
@@ -202,6 +203,26 @@ describe("parseAppleWorkout", () => {
     expect(activity.stravaActivityId).toBe("ah:2026-10-31T07:05:00-04:00-Running");
   });
 
+  it("takes avg/max/min HR from the full series, not the downsampled one", () => {
+    // 1200 samples at 130 bpm with a one-sample spike and dip; downsampling
+    // to 600 points averages each into a neighbour (165, 105).
+    const hr = Array.from({ length: 1200 }, (_, i) => [i, i === 500 ? 200 : i === 900 ? 80 : 130]);
+    const w = parsed({ id: "spike", type: "Running", start: "2026-10-31T07:05:00-04:00", durationS: 1200, hr });
+    expect(w.hr!.length).toBeLessThanOrEqual(MAX_HR_POINTS);
+    expect(Math.max(...w.hr!.map((p) => p[1]))).toBeLessThan(200);
+    expect(Math.min(...w.hr!.map((p) => p[1]))).toBeGreaterThan(80);
+    expect(w.maxHR).toBe(200);
+    expect(w.minHR).toBe(80);
+    expect(w.avgHR).toBe(130);
+  });
+
+  it("drops invalid HR samples before computing stats", () => {
+    const hr = [[0, 300], [60, 150], [120, "junk"], [180, 10], [240, 160]];
+    const w = parsed({ id: "noisy", type: "Running", start: "2026-10-31T07:05:00-04:00", durationS: 300, hr });
+    expect(w.hr).toEqual([[60, 150], [240, 160]]);
+    expect(w).toMatchObject({ avgHR: 155, maxHR: 160, minHR: 150 });
+  });
+
   it("takes a strength session with no distance and no heart rate", () => {
     const w = parsed({ id: "lift-1", type: "Traditional Strength Training", start: "2026-10-30T18:10:00-04:00", durationS: 3300 });
     expect(w.distanceKm).toBeUndefined();
@@ -325,5 +346,42 @@ describe("isSameActivity (dedupe against Strava)", () => {
     const lift = { startTime: "2026-10-30T18:10:00", durationS: 3300, isRun: false };
     expect(isSameActivity(lift, { durationS: 3480, isRun: false })).toBe(true);
     expect(isSameActivity(lift, { durationS: 6360, isRun: false })).toBe(false); // a basketball game that day
+  });
+});
+
+describe("appleSyncReset", () => {
+  it("removes unplanned Apple rows and reopens the planned row an Apple workout completed", () => {
+    const { remove, reopen } = appleSyncReset([
+      { _id: "p", title: "Tempo 6K", stravaActivityId: "ah:wu", notes: "Legs felt heavy" },
+      { _id: "u", title: "Run", isUnplanned: true, stravaActivityId: "ah:cd" },
+      { _id: "s", title: "Ride", isUnplanned: true, stravaActivityId: "12345" },
+    ]);
+    expect(remove).toEqual(["u"]);
+    expect(reopen).toHaveLength(1);
+    expect(reopen[0].id).toBe("p");
+    expect(reopen[0].patch).toMatchObject({ completed: false, stravaActivityId: undefined });
+    expect("notes" in reopen[0].patch).toBe(false); // the athlete's note stays
+  });
+
+  it("restores the planned type and title a mismatched activity took over", () => {
+    const { reopen } = appleSyncReset([
+      {
+        _id: "p",
+        title: "Cross Training",
+        stravaActivityId: "ah:lift",
+        originalType: "tempo",
+        notes: "Originally planned: Tempo 6K. Did: Morning Traditional Strength Training",
+      },
+    ]);
+    expect(reopen[0].patch).toMatchObject({ type: "tempo", title: "Tempo 6K", originalType: undefined, notes: undefined });
+  });
+
+  it("leaves Strava rows and hand completions alone", () => {
+    expect(
+      appleSyncReset([
+        { _id: "p", title: "Easy Run", stravaActivityId: "999" },
+        { _id: "q", title: "Long Run" },
+      ])
+    ).toEqual({ remove: [], reopen: [] });
   });
 });
